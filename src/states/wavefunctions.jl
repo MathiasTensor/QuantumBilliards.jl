@@ -473,7 +473,7 @@ at a time.
 * `Psi::Vector`: Flattened wavefunction with x varying fastest.
 """
 function compute_psi(state::S,x_grid,y_grid;inside_only=true,memory_limit=10.0e9,multithreaded=true) where {S<:AbsState}
-    let vec=state.vec,k=state.k_basis,basis=state.basis,billiard=state.billiard,eps=state.eps
+    let vec=state.vec,k=state.k,basis=state.basis,billiard=state.billiard,eps=state.eps
         sz=length(x_grid)*length(y_grid)
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         if inside_only

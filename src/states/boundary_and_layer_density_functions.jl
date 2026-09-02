@@ -102,7 +102,7 @@ function boundary_function(state::Eigenstate;b::Real=5.0)
     L=CompositeCurve(boundary).length
     N=max(round(Int,k*L*b/(2π)),512)
     pts=boundary_coords(billiard,sampler,N)
-    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
+    @blas_1 dX,dY=gradient_matrices(new_basis,k,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
     M=size(dX,1)
     tX=Vector{T}(undef,M) # tX = (∂xϕ)(x_i), always real since the basis is real.
     tY=Vector{T}(undef,M) # tY = (∂yϕ)(x_i), always real since the basis is real.
