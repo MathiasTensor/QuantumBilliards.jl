@@ -1,5 +1,5 @@
 """
-    Eigenstate{K,T,S,Bi,Ba}<:StationaryState
+    Eigenstate{K,T,Bi,Ba}<:StationaryState
 
 `Eigenstate` is a concrete type representing a numerically computed eigenstate
 of a quantum billiard at a given wavenumber.
@@ -19,7 +19,6 @@ are set to zero when the state is constructed.
 * `ten`: Tension of the solution, measuring the residual boundary condition violation.
 * `dim`: Dimension of `vec` (and of `basis`).
 * `eps`: Numerical precision threshold below which coefficients of `vec` are treated as zero.
-* `solver`: The solver (`S<:AbsSolver`) used to compute the eigenstate.
 * `basis`: The basis (`Ba<:AbsBasis`), resized/evaluated at `k_basis`, in which `vec` is expressed.
 * `billiard`: The billiard (`Bi<:AbsBilliard`) the eigenstate is defined on.
 
@@ -31,27 +30,26 @@ The following functions can be evaluated for this type:
 - [`wavefunction`](@ref)
 - [`husimi_function`](@ref)
 """
-struct Eigenstate{K,T,S,Bi,Ba}<:StationaryState
+struct Eigenstate{K,T,Bi,Ba}<:StationaryState
     k::K
     k_basis::K
     vec::Vector{K}
     ten::T
     dim::Int64
     eps::T
-    solver::S
     basis::Ba
     billiard::Bi
 end
 
 """
-    Eigenstate(k::K,vec::Vector{K},ten::T,solver::S,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,S<:AbsSolver,Ba<:AbsBasis,Bi<:AbsBilliard} → state::Eigenstate
+    Eigenstate(k::K,vec::Vector{K},ten::T,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard} → state::Eigenstate
 
 Construct an [`Eigenstate`](@ref) with `k_basis=k`.
 """
-Eigenstate(k::K,vec::Vector{K},ten::T,solver::S,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,S<:AbsSolver,Ba<:AbsBasis,Bi<:AbsBilliard}=Eigenstate(k,k,vec,ten,solver,basis,billiard)
+Eigenstate(k::K,vec::Vector{K},ten::T,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}=Eigenstate(k,k,vec,ten,basis,billiard)
 
 """
-    Eigenstate(k::K,k_basis::K,vec::Vector{K},ten::T,solver::S,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,S<:AbsSolver,Ba<:AbsBasis,Bi<:AbsBilliard} → state::Eigenstate
+    Eigenstate(k::K,k_basis::K,vec::Vector{K},ten::T,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard} → state::Eigenstate
 
 Construct an [`Eigenstate`](@ref) with independently specified eigenstate and
 basis wavenumbers. Real coefficients below the numerical threshold are set to
@@ -62,17 +60,16 @@ zero.
 * `k_basis::K`: Wavenumber at which the basis was evaluated.
 * `vec::Vector{K}`: Expansion coefficients.
 * `ten::T`: Solver-specific tension or residual.
-* `solver::S`: Solver used to compute the state.
 * `basis::Ba`: Basis containing the expansion.
 * `billiard::Bi`: Billiard geometry.
 
 ## Returns
 * `state::Eigenstate`: Constructed eigenstate.
 """
-function Eigenstate(k::K,k_basis::K,vec::Vector{K},ten::T,solver::S,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,S<:AbsSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+function Eigenstate(k::K,k_basis::K,vec::Vector{K},ten::T,basis::Ba,billiard::Bi) where {K<:Number,T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     eps=T(K===Float32 ? 1e-8 : 1e-16)
     filtered_vec=K<:Real ? K[abs(v)>eps ? v : zero(K) for v in vec] : vec
-    return Eigenstate(k,k_basis,filtered_vec,ten,length(vec),eps,solver,basis,billiard)
+    return Eigenstate(k,k_basis,filtered_vec,ten,length(vec),eps,basis,billiard)
 end
 
 """
