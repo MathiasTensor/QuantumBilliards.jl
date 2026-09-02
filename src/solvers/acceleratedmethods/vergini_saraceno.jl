@@ -129,15 +129,6 @@ function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where 
         tol_rn=sqrt(eps(W))
         rnmin=minimum(rn)
         rnmin>=-tol_rn||throw(ArgumentError("VS scaling origin $c0 is outside the star kernel: minimum (x-c0)⋅n=$rnmin"))
-        w=Vector{W}(undef,length(rn))
-        @inbounds @simd for j in eachindex(rn)
-            if abs(rn[j])<=tol_rn
-                rn[j]=zero(W)
-                w[j]=zero(W)
-            else
-                w[j]=ds[j]/rn[j]
-            end
-        end
         xy_all[i]=xy
         normal_all[i]=normal
         s_all[i]=s.+L0
