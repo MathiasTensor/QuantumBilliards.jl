@@ -221,6 +221,29 @@ function sm_results(mu::AbstractVector{T},k::T) where {T<:Real}
 end
 
 """
+    sm_window_results(mu::AbstractVector{T},k::T,dk::T) where {T<:Real} → Tuple
+
+Convert generalized Vergini-Saraceno eigenvalues into local wavenumber
+estimates, retaining only the asymptotic branches whose leading-order shift
+
+    |2/μ| < dk
+
+already lies inside the scaling window. This prevents small-|μ| branches from
+producing false local roots through cancellation between the first- and
+second-order terms in
+
+    k_j = k - 2/μ_j + 2/(k μ_j²).
+"""
+function sm_window_results(mu::AbstractVector{T},k::T,dk::T) where {T<:Real}
+    idx=findall(i->isfinite(mu[i])&&abs(2/mu[i])<dk,eachindex(mu))
+    isempty(idx)&&return T[],T[],idx
+    muf=mu[idx]
+    ks,ten=sm_results(muf,k)
+    keep=isfinite.(ks).&(abs.(ks.-k).<dk)
+    return ks[keep],ten[keep],idx[keep]
+end
+
+"""
     solve(solver::VerginiSaracenoSolver,basis::Ba,pts::BoundaryPoints,k::T,dk::T;multithreaded::Bool=true) where {Ba<:AbsBasis,T<:Real} → Tuple
 
 Solve one real Vergini-Saraceno scaling window centered at `k`.
@@ -235,30 +258,27 @@ wavenumbers are returned in ascending order.
 function solve(solver::VerginiSaracenoSolver,basis::Ba,pts::BoundaryPoints,k::T,dk::T;multithreaded::Bool=true) where {Ba<:AbsBasis,T<:Real}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
-    ks,ten=sm_results(mu,k)
-    idx=abs.(ks.-k).<dk
-    ks=ks[idx]
-    ten=ten[idx]
+    ks,ten,_=sm_window_results(mu,k,dk)
     p=sortperm(ks)
     return ks[p],ten[p]
 end
 
 """
+
     solve(solver::VerginiSaracenoSolver,F::AbstractMatrix{T},Fk::AbstractMatrix{T},k::T,dk::T) where {T<:Real} → Tuple
 
-Solve one real Vergini-Saraceno scaling window from preassembled matrices `F`
-and `Fk`.
-
+Solve one real Vergini-Saraceno scaling window from preassembled matrices `F` and `Fk`.
+Only generalized-eigenvalue branches satisfying `abs(2/mu)<dk` are passed to
+the second-order scaling formula. The refined estimate must then also satisfy
+`abs(ks-k)<dk`.
 ## Returns
 * `ks::Vector{T}`: Sorted accepted real wavenumbers.
 * `ten::Vector{T}`: Corresponding tensions.
 """
+
 function solve(solver::VerginiSaracenoSolver,F::AbstractMatrix{T},Fk::AbstractMatrix{T},k::T,dk::T) where {T<:Real}
     @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
-    ks,ten=sm_results(mu,k)
-    idx=abs.(ks.-k).<dk
-    ks=ks[idx]
-    ten=ten[idx]
+    ks,ten,_=sm_window_results(mu,k,dk)
     p=sortperm(ks)
     return ks[p],ten[p]
 end
@@ -277,10 +297,7 @@ basis-expansion coefficient vectors of the accepted states.
 function solve_vectors(solver::VerginiSaracenoSolver,basis::Ba,pts::BoundaryPoints,k::T,dk::T;multithreaded::Bool=true) where {Ba<:AbsBasis,T<:Real}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
-    ks,ten=sm_results(mu,k)
-    idx=abs.(ks.-k).<dk
-    ks=ks[idx]
-    ten=ten[idx]
+    ks,ten,idx=sm_window_results(mu,k,dk)
     Z=Z[:,idx]
     X=C*Z
     X=(sqrt.(ten))'.*X
