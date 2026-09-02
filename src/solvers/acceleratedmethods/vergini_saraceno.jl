@@ -570,14 +570,12 @@ correspondence.
 
 ## Attributes
 * `ks::Vector{K}`: Retained real wavenumbers.
-* `k_basis::Vector{K}`: Corresponding basis wavenumbers.
 * `X::Vector{Vector{T}}`: Real basis-expansion coefficient vector for each wavenumber.
 * `tens::Vector{T}`: Tension associated with each wavenumber.
 * `control::Vector{Bool}`: `true` for states selected while resolving an overlap.
 """
 struct StateData{K,T}<:AbsState
     ks::Vector{K}
-    k_basis::Vector{K}
     X::Vector{Vector{T}}
     tens::Vector{T}
     control::Vector{Bool}
@@ -599,7 +597,7 @@ function solve_state_data_bundle(solver::VerginiSaracenoSolver,basis::Ba,billiar
     pts=evaluate_points(solver,billiard,k)
     ks,tens,X=solve_vectors(solver,basis_new,pts,k,dk;multithreaded=multithreaded)
     X_vectors=[Vector(col) for col in eachcol(X)]
-    return StateData(ks,fill(k,length(ks)),X_vectors,tens,fill(false,length(ks)))
+    return StateData(ks,X_vectors,tens,fill(false,length(ks)))
 end
 
 """

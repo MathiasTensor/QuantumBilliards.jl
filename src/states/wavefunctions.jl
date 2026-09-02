@@ -473,7 +473,7 @@ at a time.
 * `Psi::Vector`: Flattened wavefunction with x varying fastest.
 """
 function compute_psi(state::S,x_grid,y_grid;inside_only=true,memory_limit=10.0e9,multithreaded=true) where {S<:AbsState}
-    let vec=state.vec,k=state.k_basis,basis=state.basis,billiard=state.billiard,eps=state.eps
+    let vec=state.vec,k=state.k,basis=state.basis,billiard=state.billiard,eps=state.eps
         sz=length(x_grid)*length(y_grid)
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         if inside_only
@@ -625,7 +625,6 @@ Construct wavefunctions for all states stored in `state_data`. This comes from t
 """
 function wavefunctions(state_data::StateData,billiard::Bi,basis::Ba;b=5.0,inside_only=true,fundamental_domain=true,memory_limit=10.0e9,multithreaded=true) where {Bi<:BilliardGeometry.AbsBilliard,Ba<:AbsBasis}
     ks=state_data.ks
-    k_basis=state_data.k_basis
     tens=state_data.tens
     X=state_data.X
     V=eltype(X[1])
@@ -638,7 +637,7 @@ function wavefunctions(state_data::StateData,billiard::Bi,basis::Ba;b=5.0,inside
         vec=X[i]
         dim=rescale_dimension(basis,length(vec))
         new_basis=resize_basis(basis,billiard,dim,k_basis[i])
-        state=Eigenstate(ks[i],k_basis[i],vec,tens[i],new_basis,billiard)
+        state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
         Psi2d,x_grid,y_grid=wavefunction(state;b=b,inside_only=inside_only,fundamental_domain=fundamental_domain,memory_limit=memory_limit,multithreaded=multithreaded)
         Psi2ds[i]=Psi2d
         x_grids[i]=x_grid
