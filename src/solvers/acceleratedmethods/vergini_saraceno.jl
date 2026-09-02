@@ -126,7 +126,13 @@ function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where 
         @inbounds @simd for j in eachindex(xy)
             rn[j]=dot(xy[j]-c0,normal[j])
         end
-        minimum(rn)>zero(W)||throw(ArgumentError("VS scaling origin $c0 is outside the star kernel: minimum (x-c0)⋅n=$(minimum(rn))"))
+        tol_rn=100*eps(W)
+        rnmin=minimum(rn)
+        rnmin>=-tol_rn||throw(ArgumentError("VS scaling origin $c0 is outside the star kernel: minimum (x-c0)⋅n=$rnmin"))
+        w=Vector{W}(undef,length(rn))
+        @inbounds @simd for j in eachindex(rn)
+            w[j]=abs(rn[j])<=tol_rn ? zero(W) : ds[j]/rn[j]
+        end
         xy_all[i]=xy
         normal_all[i]=normal
         s_all[i]=s.+L0
