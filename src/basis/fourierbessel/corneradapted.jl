@@ -217,19 +217,6 @@ function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2
 end
 
 """
-    toFloat32(basis::CornerAdaptedFourierBessel) → basis32::CornerAdaptedFourierBessel
-
-Convert a [`CornerAdaptedFourierBessel`](@ref) basis to use `Float32` precision.
-
-## Arguments
-* `basis`: The basis to convert.
-
-## Returns
-*  `basis32` : A new basis with `dim`, `corner_angle`, and coordinate system fields converted to `Float32`.
-"""
-toFloat32(basis::CornerAdaptedFourierBessel) = CornerAdaptedFourierBessel(basis.dim,Float32(basis.corner_angle),Float32.(basis.cs.origin),Float32(basis.cs.rot_angle))
-
-"""
     resize_basis(basis::CornerAdaptedFourierBessel, billiard::Bi, dim::Int, k) where {Bi<:AbsBilliard} → basis_new::CornerAdaptedFourierBessel
 
 Return a [`CornerAdaptedFourierBessel`](@ref) basis resized to dimension `dim`,
@@ -410,17 +397,23 @@ Evaluate the gradient with respect to the Cartesian coordinates `x` and `y` of
 the `i`-th corner-adapted Fourier-Bessel basis function on the points `pts`.
 
 ## Description
-The points are mapped to local Cartesian, then polar, coordinates `(r, phi)` of
-the basis's corner. Using the chain rule with the polar-to-Cartesian Jacobian,
-the gradient components are:
+The points are mapped to the local polar coordinates `(r, phi)` centered at the
+corner. The derivatives in the local Cartesian frame are obtained from
 
 ```math
-\\partial_x f = \\cos\\varphi\\,\\partial_r f - \\frac{\\sin\\varphi}{r}\\,\\partial_\\varphi f, \\qquad
-\\partial_y f = \\sin\\varphi\\,\\partial_r f + \\frac{\\cos\\varphi}{r}\\,\\partial_\\varphi f,
+\\partial_{x'} f = \\cos\\varphi\\,\\partial_r f
+-\\frac{\\sin\\varphi}{r}\\,\\partial_\\varphi f,
+\\qquad
+\\partial_{y'} f = \\sin\\varphi\\,\\partial_r f
++\\frac{\\cos\\varphi}{r}\\,\\partial_\\varphi f,
 ```
 
-with \$\\partial_r f = k J_{\\nu}'(kr)\\sin(\\nu\\varphi)\$ and
-\$\\partial_\\varphi f = \\nu J_{\\nu}(kr)\\cos(\\nu\\varphi)\$.
+with \$\\partial_r f=kJ_\\nu'(kr)\\sin(\\nu\\varphi)\$ and
+\$\\partial_\\varphi f=\\nu J_\\nu(kr)\\cos(\\nu\\varphi)\$.
+
+These local Cartesian derivatives are then rotated by `basis.cs.rot_angle`
+back to the global Cartesian frame. The returned `(dx,dy)` therefore represents
+the gradient with respect to the global coordinates of `pts`.
 
 ## Arguments
 * `basis`: The [`CornerAdaptedFourierBessel`](@ref) basis.
@@ -467,8 +460,11 @@ the corner-adapted Fourier-Bessel basis functions with the given `indices` on
 the points `pts`.
 
 ## Description
-As in [`gradient`](@ref) for a single index, but evaluated column-by-column for
-each index in `indices`, optionally in parallel across threads.
+As in [`gradient`](@ref) for a single index, the derivatives are first evaluated
+in the local Cartesian frame associated with the corner and are then rotated
+back to the global Cartesian frame. The calculation is performed
+column-by-column for the requested `indices`, optionally in parallel across
+threads.
 
 ## Arguments
 * `basis`: The [`CornerAdaptedFourierBessel`](@ref) basis.
@@ -524,7 +520,7 @@ gradient with respect to `x` and `y` on the points `pts`.
 ## Description
 Combines [`basis_fun`](@ref) and [`gradient`](@ref) in a single pass over the
 points, avoiding redundant coordinate transformations and Bessel function
-evaluations.
+evaluations. The gradient is returned in the global Cartesian coordinate frame.
 
 ## Arguments
 * `basis`: The [`CornerAdaptedFourierBessel`](@ref) basis.
@@ -574,7 +570,8 @@ Evaluate both the corner-adapted Fourier-Bessel basis functions with the given
 ## Description
 Combines [`basis_fun`](@ref) and [`gradient`](@ref) column-by-column,
 optionally in parallel across threads, avoiding redundant coordinate
-transformations and Bessel function evaluations.
+transformations and Bessel function evaluations. The returned gradients are in
+the global Cartesian coordinate frame.
 
 ## Arguments
 * `basis`: The [`CornerAdaptedFourierBessel`](@ref) basis.

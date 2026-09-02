@@ -195,6 +195,9 @@ domain.
 @inline symmetry_reduction_factor(::DiagonalReflection)=2
 @inline symmetry_reduction_factor(::AntiDiagonalReflection)=2
 @inline symmetry_reduction_factor(sym::BilliardGeometry.NFoldRotation)=sym.order
+#TODO symmetry reduction factor for composite reflection symmetry. No matter, since this always reduces A to the max and since 
+# in Beyn this is just an estimate for the number of eigvals inside the contour does not change anything
+@inline symmetry_reduction_factor(::CompositeReflection)=1 #FIX THIS
 
 function maximal_symmetry(billiard::BilliardGeometry.AbsBilliard)
     isempty(billiard.symmetries)&&return nothing

@@ -820,8 +820,6 @@ The function precomputes pairwise distances, inverse distances, tangential
 interaction factors, the periodic logarithmic Kress kernel, parametrization
 speeds and the scaled curvature entering diagonal kernel limits.
 
-The boundary discretization must contain `tangent`, `tangent_2` and `ts` data.
-
 If `corner_kress=true`, the computational parameter nodes are copied into
 `original_ts` for use by the corner-graded Kress construction.
 
