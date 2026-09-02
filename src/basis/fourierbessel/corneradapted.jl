@@ -441,17 +441,20 @@ function gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArr
     _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
     dx=Vector{T}(undef,M)
     dy=Vector{T}(undef,M)
-    @inbounds for j in 1:M
+    sθ,cθ=sincos(basis.cs.rot_angle)
+    @inbounds for j=1:M
         rj=r[j]
-        invr=(rj==0 ? zero(T) : inv(rj))
-        sφ=sin(φ[j])
-        cφ=cos(φ[j])
+        invr=rj==0 ? zero(T) : inv(rj)
+        sφ,cφ=sincos(φ[j])
+        s,c=sincos(m*φ[j])
         jv=Jv(m,k*rj)
         dj=Jvp(m,k*rj)
-        fr=k*dj*sin(m*φ[j])
-        fφ=m*jv*cos(m*φ[j])
-        dx[j]=cφ*fr-sφ*invr*fφ
-        dy[j]=sφ*fr+cφ*invr*fφ
+        fr=k*dj*s
+        fφ=m*jv*c
+        dx_local=cφ*fr-sφ*invr*fφ
+        dy_local=sφ*fr+cφ*invr*fφ
+        dx[j]=cθ*dx_local-sθ*dy_local
+        dy[j]=sθ*dx_local+cθ*dy_local
     end
     return dx,dy
 end
@@ -487,22 +490,26 @@ function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,
     r=Vector{T}(undef,M)
     φ=Vector{T}(undef,M)
     _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
-    dB_dx=Matrix{T}(undef,M,N); dB_dy=Matrix{T}(undef,M,N)
-    @use_threads multithreading=multithreaded for c in 1:N
-        m=ν*indices[c]
-        cx=@view dB_dx[:,c]
-        cy=@view dB_dy[:,c]
-        @inbounds for j in 1:M
+    dB_dx=Matrix{T}(undef,M,N)
+    dB_dy=Matrix{T}(undef,M,N)
+    sθ,cθ=sincos(basis.cs.rot_angle)
+    @use_threads multithreading=multithreaded for col=1:N
+        m=ν*indices[col]
+        cx=@view dB_dx[:,col]
+        cy=@view dB_dy[:,col]
+        @inbounds for j=1:M
             rj=r[j]
-            invr=(rj==0 ? zero(T) : inv(rj))
-            sφ=sin(φ[j])
-            cφ=cos(φ[j])
+            invr=rj==0 ? zero(T) : inv(rj)
+            sφ,cφ=sincos(φ[j])
+            s,c=sincos(m*φ[j])
             jv=Jv(m,k*rj)
             dj=Jvp(m,k*rj)
-            fr=k*dj*sin(m*φ[j])
-            fφ=m*jv*cos(m*φ[j])
-            cx[j]=cφ*fr-sφ*invr*fφ
-            cy[j]=sφ*fr+cφ*invr*fφ
+            fr=k*dj*s
+            fφ=m*jv*c
+            dx_local=cφ*fr-sφ*invr*fφ
+            dy_local=sφ*fr+cφ*invr*fφ
+            cx[j]=cθ*dx_local-sθ*dy_local
+            cy[j]=sθ*dx_local+cθ*dy_local
         end
     end
     return dB_dx,dB_dy
@@ -539,20 +546,21 @@ function basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::A
     bf=Vector{T}(undef,M)
     dx=Vector{T}(undef,M)
     dy=Vector{T}(undef,M)
-    @inbounds for j in 1:M
+    sθ,cθ=sincos(basis.cs.rot_angle)
+    @inbounds for j=1:M
         rj=r[j]
-        invr=(rj==0 ? zero(T) : inv(rj))
-        sφ=sin(φ[j])
-        cφ=cos(φ[j])
+        invr=rj==0 ? zero(T) : inv(rj)
+        sφ,cφ=sincos(φ[j])
+        s,c=sincos(m*φ[j])
         jv=Jv(m,k*rj)
         dj=Jvp(m,k*rj)
-        s=sin(m*φ[j])
-        c=cos(m*φ[j])
         bf[j]=jv*s
         fr=k*dj*s
         fφ=m*jv*c
-        dx[j]=cφ*fr-sφ*invr*fφ
-        dy[j]=sφ*fr+cφ*invr*fφ
+        dx_local=cφ*fr-sφ*invr*fφ
+        dy_local=sφ*fr+cφ*invr*fφ
+        dx[j]=cθ*dx_local-sθ*dy_local
+        dy[j]=sθ*dx_local+cθ*dy_local
     end
     return bf,dx,dy
 end
@@ -591,25 +599,26 @@ function basis_and_gradient(basis::CornerAdaptedFourierBessel,indices::AbstractA
     B=Matrix{T}(undef,M,N)
     dB_dx=Matrix{T}(undef,M,N)
     dB_dy=Matrix{T}(undef,M,N)
-    @use_threads multithreading=multithreaded for c in 1:N
-        m=ν*indices[c]
-        bc=@view B[:,c]
-        cx=@view dB_dx[:,c]
-        cy=@view dB_dy[:,c]
-        @inbounds for j in 1:M
+    sθ,cθ=sincos(basis.cs.rot_angle)
+    @use_threads multithreading=multithreaded for col=1:N
+        m=ν*indices[col]
+        bc=@view B[:,col]
+        cx=@view dB_dx[:,col]
+        cy=@view dB_dy[:,col]
+        @inbounds for j=1:M
             rj=r[j]
-            invr=(rj==0 ? zero(T) : inv(rj))
-            sφ=sin(φ[j])
-            cφ=cos(φ[j])
+            invr=rj==0 ? zero(T) : inv(rj)
+            sφ,cφ=sincos(φ[j])
+            s,c=sincos(m*φ[j])
             jv=Jv(m,k*rj)
             dj=Jvp(m,k*rj)
-            s=sin(m*φ[j])
-            c=cos(m*φ[j])
             bc[j]=jv*s
             fr=k*dj*s
             fφ=m*jv*c
-            cx[j]=cφ*fr-sφ*invr*fφ
-            cy[j]=sφ*fr+cφ*invr*fφ
+            dx_local=cφ*fr-sφ*invr*fφ
+            dy_local=sφ*fr+cφ*invr*fφ
+            cx[j]=cθ*dx_local-sθ*dy_local
+            cy[j]=sθ*dx_local+cθ*dy_local
         end
     end
     return B,dB_dx,dB_dy
