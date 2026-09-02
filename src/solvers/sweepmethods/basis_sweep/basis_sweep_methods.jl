@@ -71,7 +71,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::BilliardGeometry.
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)
     res=similar(ks)
-    for (i,k) in enumerate(ks)
+    @showprogress for (i,k) in enumerate(ks)
         res[i]=solve(solver,new_basis,pts,k;multithreaded=multithreaded)
     end
     return res
