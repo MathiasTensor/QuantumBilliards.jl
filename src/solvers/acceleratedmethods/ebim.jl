@@ -20,6 +20,7 @@
 #
 # Geometry, symmetry reduction, quadrature, Chebyshev plans and solver-specific
 # workspaces are delegated completely to the boundary-matrix backends.
+#TODO direct matrix construction backend for complex k. Currently only Chebyshev is supported.
 ################################################################################
 
 """
@@ -479,7 +480,7 @@ sets are merged using the adaptive EBIM clustering criterion.
 * `multithreaded_matrices::Bool=false`: Enable threaded boundary-matrix assembly.
 * `use_krylov::Bool=true`: Use shift-invert Krylov instead of the dense generalized EVP.
 * `seg_reuse_frac::T=T(0.95)`: Geometry-reuse fraction controlling segment size.
-* `use_chebyshev::Bool=false`: Use reusable derivative Chebyshev matrix construction.
+* `use_chebyshev::Bool=true`: Use reusable derivative Chebyshev matrix construction.
 * `n_panels_h::Int=15000`: Initial/manual Hankel Chebyshev panel count.
 * `M_h::Int=5`: Initial/manual Hankel Chebyshev degree.
 * `n_panels_j::Int=10000`: Initial/manual Bessel-J Chebyshev panel count.
@@ -497,7 +498,8 @@ sets are merged using the adaptive EBIM clustering criterion.
 * `λs::Vector{T}` or `Vector{Complex{T}}`: Merged corrected roots inside `[k1,k2]`.
 * `tensions::Vector{T}`: Corresponding EBIM tensions.
 """
-function solve_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol::T=T(1e-5),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),use_chebyshev::Bool=false,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function solve_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol::T=T(1e-5),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     k1<k2||throw(ArgumentError("require k1<k2"))
     0<seg_reuse_frac<=1||throw(ArgumentError("seg_reuse_frac must satisfy 0<seg_reuse_frac<=1"))
     cheb_param_strategy in (:global,:segment,:manual)||throw(ArgumentError("cheb_param_strategy must be :global, :segment or :manual"))

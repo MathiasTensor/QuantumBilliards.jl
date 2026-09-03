@@ -21,6 +21,7 @@ Practical guidance
 #TODO HSS with lu!
 #TODO Backer's idea (Numerical details of wavefunction computation) of using the real Green's function Y0 or a combo with the beta param to avoid spurious ols associated with Y0 -> this would halve the contour nodes since Fredholm matrix would have conjugation symmetry. This is similar toe the FEAST algorithm / Zoloterov filter where we can halve the nodes of real symmetric matrices
 #TODO For a smaller number of levels per contour we could dable with NLFEAST (Algorithm II): D. Kressner, Y. Liu, J. E. Roman, M. Shao, and N. Shao, "Linear convergence of iterative contour integral-based eigensolvers for nonlinear eigenvalue problems," arXiv:2606.13357 (2026).
+#TODO direct matrix construction backend for complex k. Currently only Chebyshev is supported.
 =#
 
 # when adding new ones just put them here and make sure they have construct construct_boundary_matrices! dispatch
@@ -145,6 +146,7 @@ A tuple `(B,Uk)` where:
 If numerical rank zero is detected, both returned matrices have zero columns.
 """
 function construct_B_matrix(solver::BeynSolver{T},pts::Union{BoundaryPoints{T},Vector{BoundaryPoints{T}}},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,info::Bool=false,multithreaded::Bool=true) where {T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1] # remove last point
     ej=cis.(θ) # unit circle points
     zj=k0.+R.*ej # contour points
@@ -250,6 +252,7 @@ A tuple `(λ,Uk,Y)` where:
 The corresponding approximate boundary eigenvectors satisfy `Φ=Uk*Y`.
 """
 function solve_vect(solver::BeynSolver{T},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPoints{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     N=boundary_matrix_size(solver,pts) # Get the boundary-matrix dimension for the active solver and discretization.
     B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
@@ -297,6 +300,7 @@ This is a lightweight interface to `construct_B_matrix` followed by the eigendec
 Use `solve_vect` together with `residual_and_norm_select`, or use `compute_spectrum_beyn`, when validated eigenpairs are required.
 """
 function solve(solver::BeynSolver{T},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPoints{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     N=boundary_matrix_size(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     B,_=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
@@ -352,6 +356,7 @@ A tuple `(λ,Phi,tens)` where:
 - `tens::Vector{T}` contains the corresponding raw residual norms `||T(λ)φ||`.
 """
 function solve_INFO(solver::BeynSolver{T},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPoints{T}}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5) where {Ba<:AbstractHankelBasis,T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     N=boundary_matrix_size(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
@@ -499,6 +504,7 @@ A tuple `(idx,Φ_kept,tens,tensN,logs)` where:
 - `logs::Vector{String}` contains optional selection diagnostics.
 """
 function residual_and_norm_select(solver::BeynSolver{T},λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::Union{BoundaryPoints{T},Vector{BoundaryPoints{T}}};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,multithreaded::Bool=true) where {T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -582,6 +588,7 @@ An accepted candidate that was not explicitly residual-checked has residual `NaN
 This is a heuristic acceleration intended for problems whose exact spectrum is real. It should be validated against complete residual checking when changing solver type, geometry, discretization, contour quadrature, or spectral regime.
 """
 function imag_k_check(solver::BeynSolver{T},λs::Vector{Vector{Complex{T}}},Uks::Vector{Matrix{Complex{T}}},Ys::Vector{Matrix{Complex{T}}},k0s::Vector{Complex{T}},Rs::Vector{T},all_pts;res_tol::T,pad::Int=20,group_size::Int=100,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,multithreaded::Bool=true,verbose::Bool=true) where {T<:Real}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     nw=length(λs)
     idx_inside=Vector{Vector{Int}}(undef,nw)
     idx_keep=Vector{Vector{Int}}(undef,nw)
@@ -738,6 +745,7 @@ A tuple `(ks,tens,us,pts,tensN)` where:
 - Decreasing `Rmax` can improve robustness when `T(k)` varies rapidly (high k sometimes).
 """
 function solve_spectrum_beyn(solver::BeynSolver{T},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=T(0.5),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false,use_imag_check_EXPERIMENTAL::Bool=true) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+    !use_chebyshev&&throw(ArgumentError("Beyn solver currently does not support direct matrix construction: no complex-k direct backend"))
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
