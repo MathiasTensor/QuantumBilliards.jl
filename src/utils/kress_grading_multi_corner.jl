@@ -91,17 +91,29 @@ function _corner_interval(corners::Vector{T},x::T) where {T<:Real}
     return left,right
 end
 
+@inline function _min_periodic_spacing(x::AbstractVector{T}) where {T<:Real}
+    n=length(x)
+    n<=1&&return T(Inf)
+    xs=sort(x)
+    dmin=T(Inf)
+    @inbounds for i in 1:n-1
+        dmin=min(dmin,xs[i+1]-xs[i])
+    end
+    dmin=min(dmin,xs[1]+T(TWO_PI)-xs[end])
+    return dmin
+end
+
 function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=3,minsep_tol=1e-12) where {T<:Real}
     qT=T(q);qT>one(T)||error("Require q>1.")
     corners=_sort_unique_corners(T,corners_in)
     h=T(TWO_PI)/T(N)
     σ=Vector{T}(undef,N)
     δ=h/2
-    @inbounds for k in 1:N;σ[k]=_wrap_to_2pi(δ+T(k-1)*h);end
-    sort!(σ)
-    if isempty(corners)
-        return σ,copy(σ),ones(T,N),zeros(T,N),fill(h,N)
+    @inbounds for k in 1:N
+        σ[k]=_wrap_to_2pi(δ+T(k-1)*h)
     end
+    sort!(σ)
+    isempty(corners)&&return σ,copy(σ),ones(T,N),zeros(T,N),fill(h,N)
     while qT>one(T)
         tmap=Vector{T}(undef,N)
         jac=Vector{T}(undef,N)
@@ -115,16 +127,17 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=3,minsep_to
             v=_kress_smoothstep(u,qT)
             vp=_kress_smoothstep_prime(u,qT)
             vpp=_kress_smoothstep_doubleprime(u,qT)
+
             tmap[i]=_wrap_to_2pi(left+L*v)
             jac[i]=vp
             jac2[i]=vpp/L
             wq[i]=h*jac[i]
         end
-        minsep=_min_periodic_spacing_sorted(tmap)
-        minsep>=minsep_tol && return σ,tmap,jac,jac2,wq
-        qnew=max(one(T),qT*0.9) # multiply by 0.9 each time to reduce it until it gives larger than min separation
+        minsep=_min_periodic_spacing(tmap)
+        minsep>=minsep_tol&&return σ,tmap,jac,jac2,wq
+        qnew=max(one(T),qT*T(0.9))
         @warn "Kress grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
         qT=qnew
     end
-    error("Kress grading is impossible: q reached 1 while min periodic spacing stayed below minsep_tol=$(minsep_tol).")
+    error("Kress grading is impossible: q reached 1 while min periodic spacing stayed below minsep_tol=$minsep_tol.")
 end
