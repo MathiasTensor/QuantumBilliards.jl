@@ -159,11 +159,11 @@ struct CFIEKressH0H1J0J1BesselWorkspace
 end
 
 """
-    CFIEKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads()) → CFIEKressH0H1J0J1BesselWorkspace
+    CFIEKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid()) → CFIEKressH0H1J0J1BesselWorkspace
 
 Allocate thread-local CFIE-Kress interpolation buffers.
 """
-function CFIEKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())
+function CFIEKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid())
     h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     j0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
@@ -186,7 +186,7 @@ function build_cfie_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax:
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
     plansj0=Vector{ChebJPlan}(undef,Mk)
     plansj1=Vector{ChebJPlan}(undef,Mk)
-    if Threads.nthreads()==1||Mk==1
+    if Threads.maxthreadid()==1||Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
             plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
@@ -380,11 +380,11 @@ end
 @inline _cheb_workspace_length(ws::CFIEKressChebWorkspace)=ws.Mk
 
 """
-    build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
+    build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid(),timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
 
 Build a reusable full or symmetry-reduced CFIE-Kress Chebyshev workspace.
 """
-function build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+function build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid(),timeit::Bool=false) where {T<:Real}
     zks=ComplexF64.(ks)
     @benchit timeit=timeit "CFIE-Kress geometry cache" cache=isnothing(solver.symmetry) ? build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb) : build_cfie_kress_reduced_workspace(solver,pts,solver.symmetry;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     if cache isa CFIEKressSystemCache
@@ -1113,7 +1113,7 @@ for all complex wavenumbers in `zj`.
 """
 function construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     @assert length(Tbufs)==length(zj)
-    ws=build_cfie_kress_cheb_workspace(solver,pts,zj;n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,ntls=Threads.nthreads(),timeit=timeit)
+    ws=build_cfie_kress_cheb_workspace(solver,pts,zj;n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,ntls=Threads.maxthreadid(),timeit=timeit)
     n=_cheb_workspace_dim(ws)
     @inbounds for q in eachindex(Tbufs)
         @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), expected ($n,$n)"
@@ -1176,7 +1176,7 @@ function solve_vect(solver::CFIE,billiard::Bi,basis::Ba,ks::Vector{T};batch_size
         if use_chebyshev
             zj=ComplexF64.(kbatch)
             nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1=chebyshev_params(solver,pts,zj;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=cheb_verbose)
-            ws=build_cfie_kress_cheb_workspace(solver,pts,zj;n_panels_h=nh,M_h=Mh,n_panels_j=nj,M_j=Mj,ntls=Threads.nthreads())
+            ws=build_cfie_kress_cheb_workspace(solver,pts,zj;n_panels_h=nh,M_h=Mh,n_panels_j=nj,M_j=Mj,ntls=Threads.maxthreadid())
             Mk=_cheb_workspace_length(ws)
             Nmat=_cheb_workspace_dim(ws)
             As=[Matrix{ComplexF64}(undef,Nmat,Nmat) for _ in 1:Mk]

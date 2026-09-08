@@ -324,11 +324,11 @@ struct DLPDerivChebWorkspace
 end
 
 """
-    DLPDerivChebWorkspace(Mk::Int,nth::Int=Threads.nthreads()) → DLPDerivChebWorkspace
+    DLPDerivChebWorkspace(Mk::Int,nth::Int=Threads.maxthreadid()) → DLPDerivChebWorkspace
 
 Allocate thread-local Hankel buffers used by derivative DLP assembly.
 
-`nth` must be at least `Threads.nthreads()` because threaded matrix assembly
+`nth` must be at least `Threads.maxthreadid()` because threaded matrix assembly
 indexes these buffers using `Threads.threadid()`.
 
 ## Arguments
@@ -338,8 +338,8 @@ indexes these buffers using `Threads.threadid()`.
 ## Returns
 * `ws::DLPDerivChebWorkspace`: Allocated derivative workspace.
 """
-function DLPDerivChebWorkspace(Mk::Int,nth::Int=Threads.nthreads())
-    nth>=Threads.nthreads()||throw(ArgumentError("nth must be at least Threads.nthreads()=$(Threads.nthreads()); received nth=$nth"))
+function DLPDerivChebWorkspace(Mk::Int,nth::Int=Threads.maxthreadid())
+    nth>=Threads.maxthreadid()||throw(ArgumentError("nth must be at least Threads.maxthreadid()=$(Threads.maxthreadid()); received nth=$nth"))
     return DLPDerivChebWorkspace([Vector{ComplexF64}(undef,Mk) for _ in 1:nth],[Vector{ComplexF64}(undef,Mk) for _ in 1:nth])
 end
 
@@ -421,7 +421,7 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
     @inbounds for m in 1:Mk
         pref[m]=Complex{T}(0,one(T)/2)*Complex{T}(plans1[m].k)
     end
-    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:Threads.nthreads()]
+    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:Threads.maxthreadid()]
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature
@@ -505,8 +505,8 @@ function _all_k_nosymm_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}}
     end
     kvec=ComplexF64[plans0[m].k for m in 1:Mk]
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(Mk) : ws
-    length(local_ws.h0_tls)>=Threads.nthreads()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h0_tls)) thread-local buffers but Threads.nthreads()=$(Threads.nthreads())"))
-    length(local_ws.h1_tls)>=Threads.nthreads()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h1_tls)) thread-local buffers but Threads.nthreads()=$(Threads.nthreads())"))
+    length(local_ws.h0_tls)>=Threads.maxthreadid()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h0_tls)) thread-local buffers but Threads.maxthreadid()=$(Threads.maxthreadid())"))
+    length(local_ws.h1_tls)>=Threads.maxthreadid()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h1_tls)) thread-local buffers but Threads.maxthreadid()=$(Threads.maxthreadid())"))
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature
@@ -558,8 +558,8 @@ function _one_k_nosymm_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},
     tol2=eps(T)^2
     plans0=[plan0]
     plans1=[plan1]
-    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
-    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
+    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.maxthreadid()]
+    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.maxthreadid()]
     @use_threads multithreading=multithreaded for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
@@ -610,8 +610,8 @@ function _all_k_reduced_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bounda
     κ=bp.curvature
     ds=bp.ds
     tol2=eps(T)^2
-    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:Threads.nthreads()]
-    acc_tls=[Vector{Complex{T}}(undef,Mk) for _ in 1:Threads.nthreads()]
+    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:Threads.maxthreadid()]
+    acc_tls=[Vector{Complex{T}}(undef,Mk) for _ in 1:Threads.maxthreadid()]
     @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
@@ -722,8 +722,8 @@ function _all_k_reduced_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}
     end
     kvec=ComplexF64[plans0[q].k for q in 1:Mk]
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(Mk) : ws
-    length(local_ws.h0_tls)>=Threads.nthreads()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h0_tls)) thread-local buffers but Threads.nthreads()=$(Threads.nthreads())"))
-    length(local_ws.h1_tls)>=Threads.nthreads()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h1_tls)) thread-local buffers but Threads.nthreads()=$(Threads.nthreads())"))
+    length(local_ws.h0_tls)>=Threads.maxthreadid()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h0_tls)) thread-local buffers but Threads.maxthreadid()=$(Threads.maxthreadid())"))
+    length(local_ws.h1_tls)>=Threads.maxthreadid()||throw(ArgumentError("Derivative DLP workspace has $(length(local_ws.h1_tls)) thread-local buffers but Threads.maxthreadid()=$(Threads.maxthreadid())"))
     ntls=length(local_ws.h0_tls)
     acc_tls=[Vector{Complex{T}}(undef,Mk) for _ in 1:ntls]
     acc1_tls=[Vector{Complex{T}}(undef,Mk) for _ in 1:ntls]
@@ -806,8 +806,8 @@ function _one_k_reduced_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}}
     tol2=eps(T)^2
     plans0=[plan0]
     plans1=[plan1]
-    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
-    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
+    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.maxthreadid()]
+    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.maxthreadid()]
     @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h0vals=h0_tls[tid]

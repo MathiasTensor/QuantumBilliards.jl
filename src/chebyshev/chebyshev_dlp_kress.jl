@@ -219,7 +219,7 @@ function build_dlp_kress_plans_h1_j1(ks::AbstractVector{<:Number},rmin::Float64,
     Mk=length(ks)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
     plansj1=Vector{ChebJPlan}(undef,Mk)
-    if Threads.nthreads()==1||Mk==1
+    if Threads.maxthreadid()==1||Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
             plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
@@ -247,7 +247,7 @@ function build_dlp_kress_plans_h0_h1_j0_j1(ks::AbstractVector{<:Number},rmin::Fl
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
     plansj0=Vector{ChebJPlan}(undef,Mk)
     plansj1=Vector{ChebJPlan}(undef,Mk)
-    if Threads.nthreads()==1||Mk==1
+    if Threads.maxthreadid()==1||Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
             plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
@@ -287,11 +287,11 @@ struct DLPKressH1J1BesselWorkspace
 end
 
 """
-    DLPKressH1J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads()) → DLPKressH1J1BesselWorkspace
+    DLPKressH1J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid()) → DLPKressH1J1BesselWorkspace
 
 Allocate thread-local buffers for value-only DLP-Kress Chebyshev evaluation.
 """
-DLPKressH1J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())=DLPKressH1J1BesselWorkspace([Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls])
+DLPKressH1J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid())=DLPKressH1J1BesselWorkspace([Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls])
 
 """
     DLPKressH0H1J0J1BesselWorkspace
@@ -313,12 +313,12 @@ struct DLPKressH0H1J0J1BesselWorkspace
 end
 
 """
-    DLPKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads()) → DLPKressH0H1J0J1BesselWorkspace
+    DLPKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid()) → DLPKressH0H1J0J1BesselWorkspace
 
 Allocate thread-local buffers for derivative-aware DLP-Kress Chebyshev
 evaluation.
 """
-DLPKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())=DLPKressH0H1J0J1BesselWorkspace([Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls])
+DLPKressH0H1J0J1BesselWorkspace(Mk::Int;ntls::Int=Threads.maxthreadid())=DLPKressH0H1J0J1BesselWorkspace([Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls],[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls])
 
 ####################################
 ######## CHEBYSHEV WORKSPACES ######
@@ -395,11 +395,11 @@ const DLPKressDerivativeChebWorkspace=Union{DLPKressH0H1J0J1ChebWorkspace,DLPKre
 ####################################
 
 """
-    build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}} → DLPKressH1J1ChebWorkspace{T,MatT}
+    build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid()) where {T<:Real,MatT<:AbstractMatrix{T}} → DLPKressH1J1ChebWorkspace{T,MatT}
 
 Build the value-only full-boundary DLP-Kress Chebyshev workspace.
 """
-function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid()) where {T<:Real,MatT<:AbstractMatrix{T}}
     cache=build_dlp_kress_block_cache(solver,pts;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     plans1,plansj1=build_dlp_kress_plans_h1_j1(ks,cache.rmin,cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j)
     bessel_ws=DLPKressH1J1BesselWorkspace(length(ks);ntls=ntls)
@@ -407,11 +407,11 @@ function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kre
 end
 
 """
-    build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}} → DLPKressH0H1J0J1ChebWorkspace{T,MatT}
+    build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid()) where {T<:Real,MatT<:AbstractMatrix{T}} → DLPKressH0H1J0J1ChebWorkspace{T,MatT}
 
 Build the derivative-aware full-boundary DLP-Kress Chebyshev workspace.
 """
-function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPoints{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.maxthreadid()) where {T<:Real,MatT<:AbstractMatrix{T}}
     cache=build_dlp_kress_block_cache(solver,pts;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     plans0,plans1,plansj0,plansj1=build_dlp_kress_plans_h0_h1_j0_j1(ks,cache.rmin,cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j)
     bessel_ws=DLPKressH0H1J0J1BesselWorkspace(length(ks);ntls=ntls)
@@ -960,7 +960,7 @@ function construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:
     @assert length(Tbufs)==length(zj)
     @blas_1 begin
         @benchit timeit=timeit "DLP-Kress workspace" directws=build_dlp_kress_workspace(solver,pts)
-        @benchit timeit=timeit "DLP-Kress H1/J1 plans" chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels_h=n_panels_h,npanels_j=n_panels_j,M_h=M_h,M_j=M_j,ntls=Threads.nthreads())
+        @benchit timeit=timeit "DLP-Kress H1/J1 plans" chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels_h=n_panels_h,npanels_j=n_panels_j,M_h=M_h,M_j=M_j,ntls=Threads.maxthreadid())
         n=_cheb_workspace_dim(chebws)
         @inbounds for q in eachindex(Tbufs)
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), expected ($n,$n)"
@@ -1097,7 +1097,7 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::
             zj=ComplexF64.(kbatch)
             nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1=chebyshev_params(solver,pts,zj;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=cheb_verbose)
             directws=build_dlp_kress_workspace(solver,pts)
-            chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,zj;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj,ntls=Threads.nthreads())
+            chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,zj;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj,ntls=Threads.maxthreadid())
             n=_cheb_workspace_dim(chebws)
             Ds=[Matrix{ComplexF64}(undef,n,n) for _ in eachindex(zj)]
             A=Matrix{ComplexF64}(undef,n,n)
