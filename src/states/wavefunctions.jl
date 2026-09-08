@@ -192,7 +192,7 @@ function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_
     comps=_boundary_components(billiard.full_boundary)
     L=sum(crv.length for comp in comps for crv in comp)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
-    xlim,ylim=boundary_limits(L;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    xlim,ylim=boundary_limits(comps;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
     dy=ylim[2]-ylim[1]
     nx=max(round(Int,k_max*dx*b/(2*pi)),512)
