@@ -148,8 +148,8 @@ function boundary_function(state::Eigenstate;b::Real=5.0)
         u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
     end
     regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries)
-    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
+    #pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries)
+    #u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
     nrlz=_rellich(pts,u,k) # Rellich boundary norm: ∫ |u|^2 (n·x) ds / (2k^2) no temps
     @blas_1 return u./sqrt(nrlz),pts
 end
