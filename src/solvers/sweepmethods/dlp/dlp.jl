@@ -134,9 +134,10 @@ operator is subsequently performed through `SymmetryOrbitMap`.
 * `BoundaryPoints{T}`: Complete physical-boundary discretization.
 """
 function evaluate_points(solver::BoundaryIntegralMethod{T},billiard::Bi,k) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
-    curves=billiard.full_boundary
-    bs,samplers=_adjust_scaling_and_samplers(solver,length(curves))
-    return _evaluate_bim_curves(solver,curves,bs,samplers,k)
+    boundary=billiard.full_boundary
+    comps=_boundary_components(boundary)
+    bs,samplers=_adjust_scaling_and_samplers(solver,length(comps))
+    return _evaluate_bim_curves(solver,comps,bs,samplers,k)
 end
 
 ################################################################################
