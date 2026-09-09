@@ -796,185 +796,138 @@ function _cfie_adjoint_dlp_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVec
 end
 
 """
-    _cfie_maue_action(pts::Vector{BoundaryPoints{T}},comps,μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;corner_cutoff::Real=1e-8) where {T<:Real} → Tuple{Vector{Complex{T}},BitVector}
+    _cfie_maue_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real} → Vector{Complex{T}}
 
 Apply the hypersingular Helmholtz operator using Maue regularization,
 
     Nμ=∂ₛS(∂ₛμ)+k² n⋅S(nμ).
 
-The first tangential derivative is computed wrt to the
-uniform computational variable `σ`. The source-side grading Jacobian is then
-cancelled analytically inside the single-layer integral,
+This implementation is intended for trivially graded/ungraded periodic
+boundary components. Tangential derivatives are evaluated in the
+uniform periodic parameter.
 
-    S(∂ₛμ)=∫ Φ_k ∂σμ dσ,
+For an ungraded parametrization,
 
-so no division by a vanishing source Kress speed is performed.
-The second tangential derivative is also computed spectrally on the complete
-periodic grid. Conversion to the physical target derivative
+    ∂ₛ=(1/|γσ|)∂σ.
 
-    ∂ₛ=(1/|γσ|)∂σ
+The source derivative is represented as `∂σμ`; inside the first single-layer
+term the source Jacobian cancels analytically,
 
-is performed only for target points farther than `corner_cutoff` from every
-true geometric corner of the corresponding connected component.
-
-True corner locations are obtained from
-[`_component_corner_locations`](@ref), converted to physical arclength through
-[`_composite_arclength`](@ref), and compared periodically in arclength.
+    S(∂ₛμ)=∫ Φ_k(x,γ(σ))∂σμ(σ)dσ.
 
 ## Arguments
-* `pts::Vector{BoundaryPoints{T}}`: Full graded connected boundary components.
-* `comps`: Geometric connected components corresponding one-to-one with `pts`.
+* `pts::Vector{BoundaryPoints{T}}`: Complete periodic boundary components.
 * `μ::AbstractVector{Complex{T}}`: Full CFIE layer density.
 * `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
 * `k::T`: Helmholtz wavenumber.
 
-## Keyword Arguments
-* `corner_cutoff::Real=1e-8`: Physical arclength distance from a true corner below which a target value is rejected.
-
 ## Returns
-* `Nμ::Vector{Complex{T}}`: Maue hypersingular action on the complete original grid, with rejected entries left at zero.
-* `keep::BitVector`: Boolean mask identifying numerically retained target nodes.
+* `Nμ::Vector{Complex{T}}`: Maue hypersingular action on the complete boundary grid.
 """
-function _cfie_maue_action(pts::Vector{BoundaryPoints{T}},comps,μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;corner_cutoff::Real=1e-8) where {T<:Real}
+function _cfie_maue_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
     length(μ)==ws.Ntot||throw(DimensionMismatch("Density has length $(length(μ)); expected $(ws.Ntot)"))
-    length(pts)==length(comps)||throw(DimensionMismatch("pts and boundary components must have equal length"))
-    offs=ws.offs;δ=T(corner_cutoff)
+    any(_is_nontrivial_grading(p) for p in pts)&&throw(ArgumentError("CFIE Maue reconstruction is not implemented for nontrivially Kress-graded boundaries due to unresolved issues with tangential differentiation on the graded grid."))
+    offs=ws.offs
     dσμ=Vector{Complex{T}}(undef,ws.Ntot);σx=similar(dσμ);σy=similar(dσμ)
-    keep=trues(ws.Ntot)
     @inbounds for a in eachindex(pts)
-        p=pts[a];comp=comps[a];r=offs[a]:offs[a+1]-1;N=length(p)
+        p=pts[a];r=offs[a]:offs[a+1]-1;N=length(p)
         F=FFTW.fft(@view μ[r])
         m=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1)
         d=FFTW.ifft((im.*T.(m)).*F)
-        corners=_component_corner_locations(T,comp);_,_,L=component_lengths(comp)
-        corners_s=T[_composite_arclength(comp,c) for c in corners]
         for j in 1:N
             g=r[j];n=p.normal[j]
             dσμ[g]=d[j];σx[g]=n[1]*μ[g];σy[g]=n[2]*μ[g]
-            for sc in corners_s
-                Δ=abs(p.s[j]-sc);Δ=min(Δ,T(L)-Δ)
-                if Δ<δ
-                    keep[g]=false
-                    break
-                end
-            end
         end
     end
     Sdμ=_cfie_slp_dsigma_action(pts,dσμ,ws,k)
     Sx=_cfie_slp_action(pts,σx,ws,k);Sy=_cfie_slp_action(pts,σy,ws,k)
-    out=zeros(Complex{T},ws.Ntot)
+    out=Vector{Complex{T}}(undef,ws.Ntot)
     @inbounds for a in eachindex(pts)
         p=pts[a];r=offs[a]:offs[a+1]-1;N=length(p)
         F=FFTW.fft(@view Sdμ[r])
         m=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1)
         d=FFTW.ifft((im.*T.(m)).*F)
         for i in 1:N
-            g=r[i];keep[g]||continue
-            n=p.normal[i];sp=norm(p.tangent[i])
-            out[g]=d[i]/sp+k^2*(n[1]*Sx[g]+n[2]*Sy[g])
+            g=r[i];n=p.normal[i]
+            out[g]=d[i]/norm(p.tangent[i])+k^2*(n[1]*Sx[g]+n[2]*Sy[g])
         end
     end
-    return out,keep
+    return out
 end
 
 """
-    boundary_function(
-        solver::CFIE,
-        layer_density::AbstractVector{N},
-        pts::Vector{BoundaryPoints{T}},
-        billiard::Bi,
-        k::T;
-        multithreaded::Bool=true,
-        corner_cutoff::Real=1e-8,
-    ) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple{Vector{BoundaryPoints{T}},Vector{Complex{T}}}
+    boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple{Vector{BoundaryPoints{T}},Vector{Complex{T}}}
 
 Recover the physical Dirichlet boundary normal derivative from a CFIE layer
 density and Rellich-normalize it.
 
-The reduced CFIE density is first symmetry-expanded to the complete graded
-physical boundary. The physical boundary normal derivative is then reconstructed
-from
+The reduced CFIE density is first symmetry-expanded to the complete physical
+boundary. The boundary normal derivative is reconstructed from
 
     u=-Nμ-i k(I+K')μ,
 
-where `Nμ` is evaluated through the transformed Maue formulation and `K'μ`
-through the weighted-transpose DLP action.
+where `Nμ` is evaluated through Maue regularization and `K'μ` through the
+weighted-transpose DLP action.
 
-For the Maue term, all periodic FFT differentiation is performed on the
-complete original Kress grid. Only after the complete CFIE boundary derivative
-has been assembled are target points within `corner_cutoff` of true geometric
-corners removed.
-
-The returned [`BoundaryPoints`](@ref) objects and the returned boundary function
-therefore have matching filtered lengths. The filtered point sets are marked
-non-periodic.
-
-Rellich normalization is performed only after filtering.
+CFIE boundary-function reconstruction is currently implemented only for
+trivially graded/ungraded periodic boundary discretizations. If any connected
+boundary component has nontrivial Kress grading, an `ArgumentError` is thrown
+because the tangential differentiation required by the Maue representation is
+not yet implemented consistently for such grids.
 
 ## Arguments
 * `solver::CFIE`: CFIE-Kress solver.
 * `layer_density::AbstractVector{N}`: Reduced or full CFIE layer density.
-* `pts::Vector{BoundaryPoints{T}}`: Original complete graded boundary discretization.
+* `pts::Vector{BoundaryPoints{T}}`: Boundary discretization associated with the layer density.
 * `billiard::Bi`: Billiard geometry.
 * `k::T`: Eigenwavenumber.
 
 ## Keyword Arguments
-* `multithreaded::Bool=true`: Whether the DLP matrix assembly used for `K'` is threaded.
-* `corner_cutoff::Real=1e-8`: Physical arclength exclusion distance around true corners.
+* `multithreaded::Bool=true`: Whether DLP assembly used for the adjoint action is threaded.
 
 ## Returns
-* `pts_filtered::Vector{BoundaryPoints{T}}`: Filtered physical boundary components.
-* `u::Vector{Complex{T}}`: Rellich-normalized boundary normal derivative on the filtered point set.
+* `pts::Vector{BoundaryPoints{T}}`: Complete symmetry-expanded physical boundary discretization.
+* `u::Vector{Complex{T}}`: Rellich-normalized physical boundary normal derivative.
 """
-function boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi,k::T;multithreaded::Bool=true,corner_cutoff::Real=1e-8) where {T<:Real,N<:Number,Bi<:AbsBilliard}
+function boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard}
     pts,μ=symmetrize_layer_density(solver,layer_density,pts,billiard);μ=Complex{T}.(μ)
-    ws=build_cfie_kress_workspace(solver,pts);comps=_boundary_components(billiard.full_boundary)
-    Nμ,keep=_cfie_maue_action(pts,comps,μ,ws,k;corner_cutoff=corner_cutoff)
+    any(_is_nontrivial_grading(p) for p in pts)&&throw(ArgumentError("CFIE boundary-function reconstruction is not implemented for nontrivially Kress-graded boundaries due to unresolved issues with tangential differentiation on the graded grid."))
+    ws=build_cfie_kress_workspace(solver,pts)
+    Nμ=_cfie_maue_action(pts,μ,ws,k)
     Kpμ=_cfie_adjoint_dlp_action(pts,μ,ws,k;multithreaded=multithreaded)
     u=-Nμ-Complex{T}(0,k).*(μ+Kpμ)
-    pts_filtered=Vector{BoundaryPoints{T}}(undef,length(pts));u_filtered=Complex{T}[]
-    @inbounds for a in eachindex(pts)
-        r=ws.offs[a]:ws.offs[a+1]-1;ka=keep[r]
-        pts_filtered[a]=_filter_boundary_points(pts[a],ka)
-        append!(u_filtered,u[r][ka])
-    end
-    nrlz=_rellich(pts_filtered,u_filtered,k)
+    nrlz=_rellich(pts,u,k)
     nrlz>zero(T)||throw(ArgumentError("Non-positive Rellich norm $nrlz"))
-    return pts_filtered,u_filtered./sqrt(nrlz)
+    return pts,u./sqrt(nrlz)
 end
 
 """
-    boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true,corner_cutoff::Real=1e-8,) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple
+    boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple
 
-Batch version of the filtered CFIE Maue boundary-function reconstruction.
+Batch CFIE boundary-function reconstruction.
 
-Each state is processed independently. If `multithreaded=true`, threading is
-performed over eigenstates and the internal DLP assembly for each individual
-state is kept single-threaded.
-
-Every returned boundary discretization has the near-corner points removed in
-exact correspondence with its returned boundary function.
+Each state is reconstructed on its complete symmetry-expanded physical boundary
+grid. No boundary nodes are removed.
 
 ## Arguments
 * `solver::CFIE`: CFIE-Kress solver.
-* `layer_density::AbstractVector{<:AbstractVector{N}}`: CFIE densities, one per state.
-* `pts::AbstractVector{<:Vector{BoundaryPoints{T}}}`: Original graded boundary discretizations.
+* `layer_density::AbstractVector{<:AbstractVector{N}}`: CFIE densities.
+* `pts::AbstractVector{<:Vector{BoundaryPoints{T}}}`: Boundary discretizations.
 * `billiard::Bi`: Billiard geometry.
 * `ks::AbstractVector{T}`: Eigenwavenumbers.
 
 ## Keyword Arguments
 * `multithreaded::Bool=true`: Whether different eigenstates are processed in parallel.
-* `corner_cutoff::Real=1e-8`: Physical arclength exclusion distance around true corners.
 
 ## Returns
-* `pts_all::Vector`: Filtered boundary discretizations for all states.
-* `us_all::Vector{Vector{Complex{T}}}`: Rellich-normalized filtered boundary functions.
+* `pts_all::Vector`: Complete physical boundary grids for all states.
+* `us_all::Vector{Vector{Complex{T}}}`: Rellich-normalized boundary functions.
 """
-function boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true,corner_cutoff::Real=1e-8) where {T<:Real,N<:Number,Bi<:AbsBilliard}
+function boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard}
     length(layer_density)==length(pts)==length(ks)||throw(DimensionMismatch("layer_density, pts and ks must have equal length"))
     pts_all=Vector{typeof(pts[1])}(undef,length(ks));us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     @use_threads multithreading=multithreaded for i in eachindex(ks)
-        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],billiard,ks[i];multithreaded=false,corner_cutoff=corner_cutoff)
+        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],billiard,ks[i];multithreaded=false)
     end
     return pts_all,us_all
 end
