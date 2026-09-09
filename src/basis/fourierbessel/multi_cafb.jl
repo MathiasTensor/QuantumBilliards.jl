@@ -367,7 +367,13 @@ same origin `c₀` in its scaling weight
     pts::AbstractArray
 ) where {T<:Real}
     block,local_index=_global_to_local_basis_index(basis,i)
-    return dk_fun(basis.blocks[block],local_index,k,pts)
+    dBx,dBy=gradient(basis.blocks[block],local_index,k,pts)
+    x0,y0=basis.scaling_origin
+    dB=Vector{T}(undef,length(pts))
+    @inbounds @simd for j in eachindex(pts)
+        dB[j]=((pts[j][1]-x0)*dBx[j]+(pts[j][2]-y0)*dBy[j])/k
+    end
+    return dB
 end
 
 """
@@ -528,17 +534,25 @@ function dk_fun(
     M=length(pts);N=length(indices)
     dB=Matrix{T}(undef,M,N)
     columns,local_indices=_group_basis_indices_by_block(basis,indices)
+    x0,y0=basis.scaling_origin
 
     @inbounds for block in eachindex(basis.blocks)
-        isempty(columns[block])&&continue
-        dBb=dk_fun(
+        cols=columns[block]
+        isempty(cols)&&continue
+        dBx,dBy=gradient(
             basis.blocks[block],
             local_indices[block],
             k,
             pts;
             multithreaded=multithreaded
         )
-        @views dB[:,columns[block]].=dBb
+        @views dBb=dB[:,cols]
+        for c in eachindex(cols)
+            @simd for j in 1:M
+                dBb[j,c]=((pts[j][1]-x0)*dBx[j,c]+
+                          (pts[j][2]-y0)*dBy[j,c])/k
+            end
+        end
     end
     return dB
 end
