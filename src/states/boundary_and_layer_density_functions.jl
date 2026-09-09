@@ -55,6 +55,37 @@ function _rellich(pts::BoundaryPoints{T},u::AbstractVector{N},k::T) where {T<:Re
     return acc/(2*k^2)
 end
 
+"""
+    _rellich(pts::Vector{BoundaryPoints{T}},u::AbstractVector{N},k::T) where {T<:Real,N<:Number} → T
+
+Compute the Rellich normalization integral over all connected boundary
+components,
+
+    ∫Ω|ψ|²dx=(1/(2k²))∮∂Ω (x⋅n)|∂ₙψ|²ds.
+
+The supplied `pts` may be a filtered postprocessing discretization. Only the
+retained physical quadrature nodes contribute.
+
+## Arguments
+* `pts::Vector{BoundaryPoints{T}}`: Connected physical boundary components.
+* `u::AbstractVector{N}`: Boundary normal derivative in flattened component ordering.
+* `k::T`: Helmholtz wavenumber.
+
+## Returns
+* `norm::T`: Approximation of the interior `L²` norm.
+"""
+function _rellich(pts::Vector{BoundaryPoints{T}},u::AbstractVector{N},k::T) where {T<:Real,N<:Number}
+    length(u)==boundary_matrix_size(pts)||throw(DimensionMismatch("Boundary function length does not match boundary discretization"))
+    acc=zero(T);g=1
+    @inbounds for p in pts
+        for j in 1:length(p)
+            acc+=dot(p.xy[j],p.normal[j])*p.ds[j]*abs2(u[g])
+            g+=1
+        end
+    end
+    return acc/(2*k^2)
+end
+
 ###########################################################################
 ################ BOUNDARY FUNCTION FOR BASIS TYPE SOLVERS #################
 ###########################################################################
@@ -545,29 +576,33 @@ function boundary_function(solver::DLP,pts::AbstractVector{<:BoundaryPoints{T}},
     return pts_all,us_all
 end
 
-################################################################################
-######################## CFIE BOUNDARY FUNCTION ###############################
-################################################################################
-
 """
-    _cfie_slp_action(pts,σ,ws,k) → Sσ
+    _cfie_slp_action(pts::Vector{BoundaryPoints{T}},σ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real} → Vector{Complex{T}}
 
-Apply the CFIE single-layer operator to a full boundary density.
+Apply the Helmholtz single-layer operator to a full CFIE boundary density.
+For same-component interactions, periodic Kress logarithmic product integration
+is used. Cross-component interactions are smooth and are integrated with the
+ordinary physical arc-length quadrature weights.
 
-Same-component interactions use periodic Kress logarithmic product integration.
-Interactions between distinct connected components are smooth and use ordinary
-physical arc-length quadrature.
+The operator represented is
+
+    Sσ(x)=∫_∂Ω Φ_k(x,y)σ(y)ds_y.
 
 ## Arguments
-* `pts::Vector{BoundaryPoints{T}}`: Connected full-boundary components.
+* `pts::Vector{BoundaryPoints{T}}`: Full connected boundary components.
 * `σ::AbstractVector{Complex{T}}`: Density in flattened full-boundary ordering.
 * `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
-* `k::T`: Wavenumber.
+* `k::T`: Helmholtz wavenumber.
 
 ## Returns
-* `Sσ::Vector{Complex{T}}`: Single-layer action in flattened boundary ordering.
+* `Sσ::Vector{Complex{T}}`: Single-layer action in flattened full-boundary ordering.
 """
-function _cfie_slp_action(pts::Vector{BoundaryPoints{T}},σ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+function _cfie_slp_action(
+    pts::Vector{BoundaryPoints{T}},
+    σ::AbstractVector{Complex{T}},
+    ws::CFIEKressWorkspace{T},
+    k::T
+) where {T<:Real}
     length(σ)==ws.Ntot||throw(DimensionMismatch("Density has length $(length(σ)); expected $(ws.Ntot)"))
     out=zeros(Complex{T},ws.Ntot)
     @inbounds for a in eachindex(pts)
@@ -601,30 +636,96 @@ function _cfie_slp_action(pts::Vector{BoundaryPoints{T}},σ::AbstractVector{Comp
 end
 
 """
-    _cfie_dlp_matrix!(D,pts,ws,k;multithreaded=true) → D
+    _cfie_slp_dsigma_action(pts::Vector{BoundaryPoints{T}},dσμ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real} → Vector{Complex{T}}
 
-Assemble the pure CFIE double-layer operator on the complete physical boundary.
+Apply the first Maue single-layer term after analytically cancelling the source
+Kress Jacobian.
 
-Same-component blocks use the periodic Kress logarithmic splitting. Cross-
-component interactions are smooth and use the ordinary Nyström rule.
+For
+
+    ∂ₛμ=(1/J)∂σμ,
+    ds=J dσ,
+
+the single-layer contribution satisfies
+
+    S(∂ₛμ)
+    =∫_∂Ω Φ_k(x,y)∂ₛμ(y)ds_y
+    =∫₀²π Φ_k(x,γ(σ))∂σμ(σ)dσ.
+
+Therefore `dσμ` stores `∂σμ` directly and no division by the graded source
+speed is performed.
+
+Same-component interactions use the same periodic Kress logarithmic splitting
+as [`_cfie_slp_action`](@ref), but with the physical source Jacobian removed.
+Cross-component interactions use the uniform computational quadrature weights
+`pts[b].ws`.
 
 ## Arguments
-* `D::AbstractMatrix{Complex{T}}`: Preallocated destination matrix.
-* `pts::Vector{BoundaryPoints{T}}`: Connected full-boundary components.
+* `pts::Vector{BoundaryPoints{T}}`: Full connected boundary components.
+* `dσμ::AbstractVector{Complex{T}}`: Computational-coordinate derivative `∂σμ`.
 * `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
-* `k::T`: Wavenumber.
+* `k::T`: Helmholtz wavenumber.
+
+## Returns
+* `Sdμ::Vector{Complex{T}}`: Values of `S(∂ₛμ)` on the complete graded target grid.
+"""
+function _cfie_slp_dsigma_action(pts::Vector{BoundaryPoints{T}},dσμ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+    length(dσμ)==ws.Ntot||throw(DimensionMismatch("Density has length $(length(dσμ)); expected $(ws.Ntot)"))
+    out=zeros(Complex{T},ws.Ntot)
+    @inbounds for a in eachindex(pts)
+        pa=pts[a];Ga=ws.Gs[a];ra=ws.offs[a]:ws.offs[a+1]-1;Na=length(pa)
+        for i in 1:Na
+            gi=ra[i];acc=zero(Complex{T})
+            for j in 1:Na
+                gj=ra[j];sj=Ga.speed[j]
+                if i==j
+                    m1=-inv_two_pi
+                    m2=(Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*sj^2)
+                else
+                    r=Ga.R[i,j];h0=H(0,k*r)
+                    m1=-inv_two_pi*real(h0)
+                    m2=Complex{T}(0,one(T)/2)*h0-m1*Ga.logterm[i,j]
+                end
+                acc+=(ws.Rmat[gi,gj]*m1+pa.ws[j]*m2)*dσμ[gj]
+            end
+            x=pa.xy[i]
+            for b in eachindex(pts)
+                b==a&&continue
+                pb=pts[b];rb=ws.offs[b]:ws.offs[b+1]-1
+                for j in 1:length(pb)
+                    acc+=Φ_helmholtz(k,norm(x-pb.xy[j]))*dσμ[rb[j]]*pb.ws[j]
+                end
+            end
+            out[gi]=acc
+        end
+    end
+    return out
+end
+
+"""
+    _cfie_dlp_matrix!(D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → AbstractMatrix{Complex{T}}
+
+Assemble the CFIE operator on the complete physical boundary.
+Same-component blocks use periodic Kress logarithmic product integration.
+Interactions between different connected components are smooth and use ordinary
+Nyström quadrature.
+
+## Arguments
+* `D::AbstractMatrix{Complex{T}}`: Preallocated full destination matrix.
+* `pts::Vector{BoundaryPoints{T}}`: Full connected boundary components.
+* `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
+* `k::T`: Helmholtz wavenumber.
 
 ## Keyword Arguments
 * `multithreaded::Bool=true`: Whether sufficiently large assembly loops are threaded.
 
 ## Returns
-* `D::AbstractMatrix{Complex{T}}`: Full double-layer matrix.
+* `D::AbstractMatrix{Complex{T}}`: Assembled full double-layer matrix.
 """
 function _cfie_dlp_matrix!(D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     size(D)==(ws.Ntot,ws.Ntot)||throw(DimensionMismatch("D must be $(ws.Ntot)×$(ws.Ntot)"))
     fill!(D,zero(Complex{T}))
-    α1=-k*inv_two_pi
-    α2=Complex{T}(0,k/2)
+    α1=-k*inv_two_pi;α2=Complex{T}(0,k/2)
     for a in eachindex(pts)
         pa=pts[a];Ga=ws.Gs[a];ra=ws.offs[a]:ws.offs[a+1]-1;Na=length(pa)
         @inbounds for i in 1:Na
@@ -645,14 +746,12 @@ function _cfie_dlp_matrix!(D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoi
     for a in eachindex(pts),b in eachindex(pts)
         a==b&&continue
         pa=pts[a];pb=pts[b]
-        ra=ws.offs[a]:ws.offs[a+1]-1
-        rb=ws.offs[b]:ws.offs[b+1]-1
+        ra=ws.offs[a]:ws.offs[a+1]-1;rb=ws.offs[b]:ws.offs[b+1]-1
         @use_threads multithreading=(multithreaded&&length(pa)>=16) for i in 1:length(pa)
             x=pa.xy[i];gi=ra[i]
             @inbounds for j in 1:length(pb)
                 y=pb.xy[j];t=pb.tangent[j]
-                dx=x[1]-y[1];dy=x[2]-y[2]
-                r2=muladd(dx,dx,dy*dy)
+                dx=x[1]-y[1];dy=x[2]-y[2];r2=muladd(dx,dx,dy*dy)
                 r2<=eps(T)^2&&continue
                 r=sqrt(r2)
                 D[gi,rb[j]]=pb.ws[j]*α2*(t[2]*dx-t[1]*dy)*H(1,k*r)/r
@@ -663,25 +762,30 @@ function _cfie_dlp_matrix!(D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoi
 end
 
 """
-    _cfie_adjoint_dlp_action(pts,μ,ws,k;multithreaded=true) → Kpμ
+    _cfie_adjoint_dlp_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → Vector{Complex{T}}
 
-Apply the adjoint double-layer operator through the weighted-transpose identity
+Apply the discrete adjoint double-layer action through the weighted-transpose
+identity
 
-    K' = W⁻¹ Dᵀ W,
+    K'ₕ=W⁻¹DₕᵀW,
 
-where `W=diag(ds)` contains the physical arc-length quadrature weights.
+where `W=diag(ds)` contains physical arc-length quadrature weights.
+
+This is a bilinear transpose consistent with the real Fredholm transpose
+convention used for the boundary normal derivative; no complex conjugation is
+applied.
 
 ## Arguments
-* `pts::Vector{BoundaryPoints{T}}`: Connected full-boundary components.
-* `μ::AbstractVector{Complex{T}}`: Full CFIE density.
+* `pts::Vector{BoundaryPoints{T}}`: Full connected boundary components.
+* `μ::AbstractVector{Complex{T}}`: Full CFIE layer density.
 * `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
-* `k::T`: Wavenumber.
+* `k::T`: Helmholtz wavenumber.
 
 ## Keyword Arguments
 * `multithreaded::Bool=true`: Whether DLP assembly is threaded.
 
 ## Returns
-* `Kpμ::Vector{Complex{T}}`: Adjoint double-layer action.
+* `Kpμ::Vector{Complex{T}}`: Discrete adjoint DLP action.
 """
 function _cfie_adjoint_dlp_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     length(μ)==ws.Ntot||throw(DimensionMismatch("Density has length $(length(μ)); expected $(ws.Ntot)"))
@@ -692,156 +796,185 @@ function _cfie_adjoint_dlp_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVec
 end
 
 """
-    _cfie_maue_action(pts,μ,ws,k) → Nμ
+    _cfie_maue_action(pts::Vector{BoundaryPoints{T}},comps,μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;corner_cutoff::Real=1e-8) where {T<:Real} → Tuple{Vector{Complex{T}},BitVector}
 
-Apply the hypersingular operator using Maue regularization,
+Apply the hypersingular Helmholtz operator using Maue regularization,
 
-    Nμ = ∂ₛS(∂ₛμ)+k² n⋅S(nμ).
+    Nμ=∂ₛS(∂ₛμ)+k² n⋅S(nμ).
 
-Tangential derivatives are computed spectrally in the uniform Kress
-computational variable and converted to physical arc-length derivatives using
-the stored parametrization speed.
+The first tangential derivative is computed wrt to the
+uniform computational variable `σ`. The source-side grading Jacobian is then
+cancelled analytically inside the single-layer integral,
+
+    S(∂ₛμ)=∫ Φ_k ∂σμ dσ,
+
+so no division by a vanishing source Kress speed is performed.
+The second tangential derivative is also computed spectrally on the complete
+periodic grid. Conversion to the physical target derivative
+
+    ∂ₛ=(1/|γσ|)∂σ
+
+is performed only for target points farther than `corner_cutoff` from every
+true geometric corner of the corresponding connected component.
+
+True corner locations are obtained from
+[`_component_corner_locations`](@ref), converted to physical arclength through
+[`_composite_arclength`](@ref), and compared periodically in arclength.
 
 ## Arguments
-* `pts::Vector{BoundaryPoints{T}}`: Connected full-boundary components.
-* `μ::AbstractVector{Complex{T}}`: Full CFIE density.
+* `pts::Vector{BoundaryPoints{T}}`: Full graded connected boundary components.
+* `comps`: Geometric connected components corresponding one-to-one with `pts`.
+* `μ::AbstractVector{Complex{T}}`: Full CFIE layer density.
 * `ws::CFIEKressWorkspace{T}`: Precomputed CFIE-Kress workspace.
-* `k::T`: Wavenumber.
+* `k::T`: Helmholtz wavenumber.
+
+## Keyword Arguments
+* `corner_cutoff::Real=1e-8`: Physical arclength distance from a true corner below which a target value is rejected.
 
 ## Returns
-* `Nμ::Vector{Complex{T}}`: Hypersingular action in flattened boundary ordering.
+* `Nμ::Vector{Complex{T}}`: Maue hypersingular action on the complete original grid, with rejected entries left at zero.
+* `keep::BitVector`: Boolean mask identifying numerically retained target nodes.
 """
-function _cfie_maue_action(pts::Vector{BoundaryPoints{T}},μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+function _cfie_maue_action(pts::Vector{BoundaryPoints{T}},comps,μ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T;corner_cutoff::Real=1e-8) where {T<:Real}
     length(μ)==ws.Ntot||throw(DimensionMismatch("Density has length $(length(μ)); expected $(ws.Ntot)"))
-    offs=ws.offs
-    dμ=Vector{Complex{T}}(undef,ws.Ntot)
-    σx=similar(dμ);σy=similar(dμ)
+    length(pts)==length(comps)||throw(DimensionMismatch("pts and boundary components must have equal length"))
+    offs=ws.offs;δ=T(corner_cutoff)
+    dσμ=Vector{Complex{T}}(undef,ws.Ntot);σx=similar(dσμ);σy=similar(dσμ)
+    keep=trues(ws.Ntot)
     @inbounds for a in eachindex(pts)
-        p=pts[a];r=offs[a]:offs[a+1]-1;N=length(p)
+        p=pts[a];comp=comps[a];r=offs[a]:offs[a+1]-1;N=length(p)
         F=FFTW.fft(@view μ[r])
         m=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1)
         d=FFTW.ifft((im.*T.(m)).*F)
+        corners=_component_corner_locations(T,comp);_,_,L=component_lengths(comp)
+        corners_s=T[_composite_arclength(comp,c) for c in corners]
         for j in 1:N
-            g=r[j];sp=norm(p.tangent[j]);n=p.normal[j]
-            dμ[g]=d[j]/sp
-            σx[g]=n[1]*μ[g]
-            σy[g]=n[2]*μ[g]
+            g=r[j];n=p.normal[j]
+            dσμ[g]=d[j];σx[g]=n[1]*μ[g];σy[g]=n[2]*μ[g]
+            for sc in corners_s
+                Δ=abs(p.s[j]-sc);Δ=min(Δ,T(L)-Δ)
+                if Δ<δ
+                    keep[g]=false
+                    break
+                end
+            end
         end
     end
-    Sdμ=_cfie_slp_action(pts,dμ,ws,k)
-    Sx=_cfie_slp_action(pts,σx,ws,k)
-    Sy=_cfie_slp_action(pts,σy,ws,k)
-    out=Vector{Complex{T}}(undef,ws.Ntot)
+    Sdμ=_cfie_slp_dsigma_action(pts,dσμ,ws,k)
+    Sx=_cfie_slp_action(pts,σx,ws,k);Sy=_cfie_slp_action(pts,σy,ws,k)
+    out=zeros(Complex{T},ws.Ntot)
     @inbounds for a in eachindex(pts)
         p=pts[a];r=offs[a]:offs[a+1]-1;N=length(p)
         F=FFTW.fft(@view Sdμ[r])
         m=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1)
         d=FFTW.ifft((im.*T.(m)).*F)
         for i in 1:N
-            g=r[i];n=p.normal[i];sp=norm(p.tangent[i])
+            g=r[i];keep[g]||continue
+            n=p.normal[i];sp=norm(p.tangent[i])
             out[g]=d[i]/sp+k^2*(n[1]*Sx[g]+n[2]*Sy[g])
         end
     end
-    return out
+    return out,keep
 end
 
 """
-    _rellich(pts::Vector{BoundaryPoints{T}},u::AbstractVector{N},k::T) → T
-
-Compute the Rellich normalization integral over all connected boundary
-components,
-
-    ∫Ω|ψ|²dx = (1/(2k²))∮∂Ω (x⋅n)|∂ₙψ|²ds.
-
-Hole contributions are handled automatically because their stored normals have
-the domain-outward orientation.
-
-## Arguments
-* `pts::Vector{BoundaryPoints{T}}`: Connected boundary components.
-* `u::AbstractVector{N}`: Full boundary normal derivative.
-* `k::T`: Wavenumber.
-
-## Returns
-* `norm::T`: Approximation of the interior `L²` norm.
-"""
-function _rellich(pts::Vector{BoundaryPoints{T}},u::AbstractVector{N},k::T) where {T<:Real,N<:Number}
-    length(u)==boundary_matrix_size(pts)||throw(DimensionMismatch("Boundary function length does not match boundary discretization"))
-    acc=zero(T);g=1
-    @inbounds for p in pts
-        for j in 1:length(p)
-            acc+=dot(p.xy[j],p.normal[j])*p.ds[j]*abs2(u[g])
-            g+=1
-        end
-    end
-    return acc/(2*k^2)
-end
-
-"""
-    boundary_function(solver::CFIE,layer_density,pts,billiard,k;multithreaded=true) → pts,u
+    boundary_function(
+        solver::CFIE,
+        layer_density::AbstractVector{N},
+        pts::Vector{BoundaryPoints{T}},
+        billiard::Bi,
+        k::T;
+        multithreaded::Bool=true,
+        corner_cutoff::Real=1e-8,
+    ) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple{Vector{BoundaryPoints{T}},Vector{Complex{T}}}
 
 Recover the physical Dirichlet boundary normal derivative from a CFIE layer
 density and Rellich-normalize it.
 
-The reduced density is first expanded to the complete physical boundary. For
-the doubled CFIE convention used by this solver, the recovered boundary
-function is
+The reduced CFIE density is first symmetry-expanded to the complete graded
+physical boundary. The physical boundary normal derivative is then reconstructed
+from
 
-    u = -Nμ - i k (I+K')μ,
+    u=-Nμ-i k(I+K')μ,
 
-where `N` is evaluated through Maue regularization and `K'` through the
-weighted-transpose DLP identity.
+where `Nμ` is evaluated through the transformed Maue formulation and `K'μ`
+through the weighted-transpose DLP action.
+
+For the Maue term, all periodic FFT differentiation is performed on the
+complete original Kress grid. Only after the complete CFIE boundary derivative
+has been assembled are target points within `corner_cutoff` of true geometric
+corners removed.
+
+The returned [`BoundaryPoints`](@ref) objects and the returned boundary function
+therefore have matching filtered lengths. The filtered point sets are marked
+non-periodic.
+
+Rellich normalization is performed only after filtering.
 
 ## Arguments
 * `solver::CFIE`: CFIE-Kress solver.
-* `layer_density::AbstractVector{<:Number}`: Reduced or full CFIE layer density.
-* `pts::Vector{BoundaryPoints{T}}`: Full boundary discretization used by CFIE.
-* `billiard::Bi`: Billiard geometry used for symmetry expansion.
+* `layer_density::AbstractVector{N}`: Reduced or full CFIE layer density.
+* `pts::Vector{BoundaryPoints{T}}`: Original complete graded boundary discretization.
+* `billiard::Bi`: Billiard geometry.
 * `k::T`: Eigenwavenumber.
 
 ## Keyword Arguments
 * `multithreaded::Bool=true`: Whether the DLP matrix assembly used for `K'` is threaded.
+* `corner_cutoff::Real=1e-8`: Physical arclength exclusion distance around true corners.
 
 ## Returns
-* `pts::Vector{BoundaryPoints{T}}`: Full physical boundary components.
-* `u::Vector{Complex{T}}`: Rellich-normalized physical normal derivative.
+* `pts_filtered::Vector{BoundaryPoints{T}}`: Filtered physical boundary components.
+* `u::Vector{Complex{T}}`: Rellich-normalized boundary normal derivative on the filtered point set.
 """
-function boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard}
-    pts,μ=symmetrize_layer_density(solver,layer_density,pts,billiard)
-    μ=Complex{T}.(μ)
-    ws=build_cfie_kress_workspace(solver,pts)
-    Nμ=_cfie_maue_action(pts,μ,ws,k)
+function boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi,k::T;multithreaded::Bool=true,corner_cutoff::Real=1e-8) where {T<:Real,N<:Number,Bi<:AbsBilliard}
+    pts,μ=symmetrize_layer_density(solver,layer_density,pts,billiard);μ=Complex{T}.(μ)
+    ws=build_cfie_kress_workspace(solver,pts);comps=_boundary_components(billiard.full_boundary)
+    Nμ,keep=_cfie_maue_action(pts,comps,μ,ws,k;corner_cutoff=corner_cutoff)
     Kpμ=_cfie_adjoint_dlp_action(pts,μ,ws,k;multithreaded=multithreaded)
     u=-Nμ-Complex{T}(0,k).*(μ+Kpμ)
-    nrlz=_rellich(pts,u,k)
+    pts_filtered=Vector{BoundaryPoints{T}}(undef,length(pts));u_filtered=Complex{T}[]
+    @inbounds for a in eachindex(pts)
+        r=ws.offs[a]:ws.offs[a+1]-1;ka=keep[r]
+        pts_filtered[a]=_filter_boundary_points(pts[a],ka)
+        append!(u_filtered,u[r][ka])
+    end
+    nrlz=_rellich(pts_filtered,u_filtered,k)
     nrlz>zero(T)||throw(ArgumentError("Non-positive Rellich norm $nrlz"))
-    return pts,u./sqrt(nrlz)
+    return pts_filtered,u_filtered./sqrt(nrlz)
 end
 
 """
-    boundary_function(solver::CFIE,layer_density,pts,billiard,ks;multithreaded=true) → pts_all,us_all
+    boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true,corner_cutoff::Real=1e-8,) where {T<:Real,N<:Number,Bi<:AbsBilliard} → Tuple
 
-Batch version of the CFIE Maue boundary-function reconstruction.
+Batch version of the filtered CFIE Maue boundary-function reconstruction.
+
+Each state is processed independently. If `multithreaded=true`, threading is
+performed over eigenstates and the internal DLP assembly for each individual
+state is kept single-threaded.
+
+Every returned boundary discretization has the near-corner points removed in
+exact correspondence with its returned boundary function.
 
 ## Arguments
 * `solver::CFIE`: CFIE-Kress solver.
-* `layer_density::AbstractVector{<:AbstractVector}`: CFIE densities, one per state.
-* `pts::AbstractVector{<:Vector{BoundaryPoints{T}}}`: Boundary discretizations.
+* `layer_density::AbstractVector{<:AbstractVector{N}}`: CFIE densities, one per state.
+* `pts::AbstractVector{<:Vector{BoundaryPoints{T}}}`: Original graded boundary discretizations.
 * `billiard::Bi`: Billiard geometry.
 * `ks::AbstractVector{T}`: Eigenwavenumbers.
 
 ## Keyword Arguments
-* `multithreaded::Bool=true`: Whether different states are processed in parallel.
+* `multithreaded::Bool=true`: Whether different eigenstates are processed in parallel.
+* `corner_cutoff::Real=1e-8`: Physical arclength exclusion distance around true corners.
 
 ## Returns
-* `pts_all::Vector`: Full physical boundary discretizations.
-* `us_all::Vector{Vector}`: Rellich-normalized physical boundary functions.
+* `pts_all::Vector`: Filtered boundary discretizations for all states.
+* `us_all::Vector{Vector{Complex{T}}}`: Rellich-normalized filtered boundary functions.
 """
-function boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,N<:Number,Bi<:AbsBilliard}
+function boundary_function(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true,corner_cutoff::Real=1e-8) where {T<:Real,N<:Number,Bi<:AbsBilliard}
     length(layer_density)==length(pts)==length(ks)||throw(DimensionMismatch("layer_density, pts and ks must have equal length"))
-    pts_all=Vector{typeof(pts[1])}(undef,length(ks))
-    us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
+    pts_all=Vector{typeof(pts[1])}(undef,length(ks));us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     @use_threads multithreading=multithreaded for i in eachindex(ks)
-        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],billiard,ks[i];multithreaded=false)
+        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],billiard,ks[i];multithreaded=false,corner_cutoff=corner_cutoff)
     end
     return pts_all,us_all
 end

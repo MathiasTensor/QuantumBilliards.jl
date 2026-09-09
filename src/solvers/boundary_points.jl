@@ -392,6 +392,32 @@ a separate polygonal approximation of the billiard boundary.
 @inline points_in_billiard(pts,billiard)=BilliardGeometry.is_inside(billiard,pts)
 
 """
+    _filter_boundary_points(pts::BoundaryPoints{T},keep::AbstractVector{Bool}) where {T<:Real} → BoundaryPoints{T}
+
+Return a filtered copy of a [`BoundaryPoints`](@ref) object containing only the
+entries selected by `keep`.
+
+All per-node fields whose lengths equal `length(pts)` are filtered consistently.
+Scalar metadata and endpoint metadata are preserved.
+
+The returned point set is marked `is_periodic=false` because removing nodes
+around true corners destroys the complete periodic computational grid even
+though the original point set was periodic.
+
+## Arguments
+* `pts::BoundaryPoints{T}`: Original complete boundary discretization.
+* `keep::AbstractVector{Bool}`: Boolean selection mask of length `length(pts)`.
+
+## Returns
+* `filtered::BoundaryPoints{T}`: Boundary discretization containing only retained nodes.
+"""
+function _filter_boundary_points(pts::BoundaryPoints{T},keep::AbstractVector{Bool}) where {T<:Real}
+    length(keep)==length(pts)||throw(DimensionMismatch("keep has length $(length(keep)); expected $(length(pts))"))
+    f(v)=length(v)==length(pts) ? v[keep] : copy(v)
+    return BoundaryPoints{T}(pts.xy[keep],f(pts.normal),f(pts.s),f(pts.ds),f(pts.w),f(pts.w_n),f(pts.curvature),f(pts.xy_int),pts.shift_x,pts.shift_y,f(pts.tangent),f(pts.tangent_2),f(pts.ts),f(pts.tphys),f(pts.ws),f(pts.ws_der),pts.compid,false,pts.xL,pts.xR,pts.tL,pts.tR)
+end
+
+"""
     kress_R_even!(R0::AbstractMatrix{T}) where {T<:Real}
 
 Constructs the periodic Kress logarithmic correction matrix for an even number of
