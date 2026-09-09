@@ -786,7 +786,7 @@ The reduced density is first expanded to the complete physical boundary. For
 the doubled CFIE convention used by this solver, the recovered boundary
 function is
 
-    u = -2Nμ - i k (I+K')μ,
+    u = -Nμ - i k (I+K')μ,
 
 where `N` is evaluated through Maue regularization and `K'` through the
 weighted-transpose DLP identity.
@@ -811,7 +811,7 @@ function boundary_function(solver::CFIE,layer_density::AbstractVector{N},pts::Ve
     ws=build_cfie_kress_workspace(solver,pts)
     Nμ=_cfie_maue_action(pts,μ,ws,k)
     Kpμ=_cfie_adjoint_dlp_action(pts,μ,ws,k;multithreaded=multithreaded)
-    u=-2*Nμ-Complex{T}(0,k).*(μ+Kpμ)
+    u=-Nμ-Complex{T}(0,k).*(μ+Kpμ)
     nrlz=_rellich(pts,u,k)
     nrlz>zero(T)||throw(ArgumentError("Non-positive Rellich norm $nrlz"))
     return pts,u./sqrt(nrlz)
