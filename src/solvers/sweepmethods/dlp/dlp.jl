@@ -92,115 +92,23 @@ end
 @inline _dlp_matrix_dim(pts::BoundaryPoints,::Nothing)=length(pts)
 @inline _dlp_matrix_dim(pts::BoundaryPoints,orbits::SymmetryOrbitMap)=fundamental_size(orbits)
 @inline function boundary_matrix_size(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T}) where {T<:Real}
-    orbits=_dlp_symmetry_orbits(solver,pts)
-    return _dlp_matrix_dim(pts,orbits)
+    return _dlp_matrix_dim(pts,_dlp_symmetry_orbits(solver,pts))
 end
 
-# Discretize the supplied physical boundary curves and concatenate them into one BoundaryPoints object.
 function _evaluate_bim_curves(solver::BoundaryIntegralMethod,curves::AbstractVector,bs::AbstractVector,samplers::AbstractVector,k)
-    T=eltype(solver.pts_scaling_factor)
-    Ns=_determine_bp_sizes(curves,bs,k)
-    M=length(Ns)
-    xy_all=Vector{Vector{SVector{2,T}}}(undef,M)
-    normal_all=Vector{Vector{SVector{2,T}}}(undef,M)
-    s_all=Vector{Vector{T}}(undef,M)
-    ds_all=Vector{Vector{T}}(undef,M)
-    curvature_all=Vector{Vector{T}}(undef,M)
+    T=eltype(solver.pts_scaling_factor);Ns=_determine_bp_sizes(curves,bs,k);M=length(curves)
+    needed=isnothing(solver.symmetry) ? 1 : lcm(2,symmetry_node_multiple(solver.symmetry))
+    xy_all=Vector{Vector{SVector{2,T}}}(undef,M);normal_all=Vector{Vector{SVector{2,T}}}(undef,M)
+    s_all=Vector{Vector{T}}(undef,M);ds_all=Vector{Vector{T}}(undef,M);κ_all=Vector{Vector{T}}(undef,M)
     L0=zero(T)
     @inbounds for i in eachindex(curves)
-        crv=curves[i]
-        t,dt=sample_points(samplers[i],Ns[i])
+        crv=curves[i];N=max(Ns[i],solver.min_pts);N=cld(N,needed)*needed
+        sampler=samplers[i];t,dt=sample_points(sampler,N)
         xy,normal,s,ds=boundary_coords(crv,t,dt)
-        xy_all[i]=xy
-        normal_all[i]=normal
-        s_all[i]=s.+L0
-        ds_all[i]=ds
-        curvature_all[i]=curvature(crv,t)
-        L0+=crv.length
+        xy_all[i]=xy;normal_all[i]=normal;s_all[i]=s.+L0;ds_all[i]=ds;κ_all[i]=curvature(crv,t)
+        L0+=T(crv.length)
     end
-    return BoundaryPoints(vcat(xy_all...);normal=vcat(normal_all...),s=vcat(s_all...),ds=vcat(ds_all...),curvature=vcat(curvature_all...))
-end
-
-# Expand a first-quadrant fundamental boundary into the complete D2-symmetric boundary in canonical CCW order.
-function _expand_bim_boundary(pts::BoundaryPoints{T},::BilliardGeometry.XYAxisReflection,L::T) where {T<:Real}
-    isempty(pts)&&throw(ArgumentError("Cannot expand an empty fundamental boundary"))
-    sf=pts.s.-pts.s[1]
-    sy=BilliardGeometry.YAxisReflection()
-    sxy=BilliardGeometry.XYAxisReflection()
-    sx=BilliardGeometry.XAxisReflection()
-    xy=vcat(pts.xy,BilliardGeometry.apply_symmetry(sy,reverse(pts.xy)),BilliardGeometry.apply_symmetry(sxy,pts.xy),BilliardGeometry.apply_symmetry(sx,reverse(pts.xy)))
-    normal=vcat(pts.normal,BilliardGeometry.apply_symmetry(sy,reverse(pts.normal)),BilliardGeometry.apply_symmetry(sxy,pts.normal),BilliardGeometry.apply_symmetry(sx,reverse(pts.normal)))
-    s=vcat(sf,2*L.-reverse(sf),2*L.+sf,4*L.-reverse(sf))
-    ds=vcat(pts.ds,reverse(pts.ds),pts.ds,reverse(pts.ds))
-    curvature=vcat(pts.curvature,reverse(pts.curvature),pts.curvature,reverse(pts.curvature))
-    return BoundaryPoints(xy;normal=normal,s=s,ds=ds,curvature=curvature)
-end
-
-# Expand a half-boundary fundamental domain across the x-axis into the complete physical boundary.
-function _expand_bim_boundary(pts::BoundaryPoints{T},::BilliardGeometry.XAxisReflection,L::T) where {T<:Real}
-    isempty(pts)&&throw(ArgumentError("Cannot expand an empty fundamental boundary"))
-    sf=pts.s.-pts.s[1]
-    sym=BilliardGeometry.XAxisReflection()
-    xy=vcat(pts.xy,BilliardGeometry.apply_symmetry(sym,reverse(pts.xy)))
-    normal=vcat(pts.normal,BilliardGeometry.apply_symmetry(sym,reverse(pts.normal)))
-    s=vcat(sf,2L.-reverse(sf))
-    ds=vcat(pts.ds,reverse(pts.ds))
-    curvature=vcat(pts.curvature,reverse(pts.curvature))
-    return BoundaryPoints(xy;normal=normal,s=s,ds=ds,curvature=curvature)
-end
-
-# Expand a half-boundary fundamental domain across the y-axis into the complete physical boundary.
-function _expand_bim_boundary(pts::BoundaryPoints{T},::BilliardGeometry.YAxisReflection,L::T) where {T<:Real}
-    isempty(pts)&&throw(ArgumentError("Cannot expand an empty fundamental boundary"))
-    sf=pts.s.-pts.s[1]
-    sym=BilliardGeometry.YAxisReflection()
-    xy=vcat(pts.xy,BilliardGeometry.apply_symmetry(sym,reverse(pts.xy)))
-    normal=vcat(pts.normal,BilliardGeometry.apply_symmetry(sym,reverse(pts.normal)))
-    s=vcat(sf,2*L.-reverse(sf))
-    ds=vcat(pts.ds,reverse(pts.ds))
-    curvature=vcat(pts.curvature,reverse(pts.curvature))
-    return BoundaryPoints(xy;normal=normal,s=s,ds=ds,curvature=curvature)
-end
-
-# Expand one rotational fundamental sector into the complete Cn-symmetric physical boundary.
-function _expand_bim_boundary(pts::BoundaryPoints{T},sym::BilliardGeometry.NFoldRotation,L::T) where {T<:Real}
-    isempty(pts)&&throw(ArgumentError("Cannot expand an empty fundamental boundary"))
-    n=sym.order
-    n>=2||throw(ArgumentError("NFoldRotation order must be at least 2; received $n"))
-    sf=pts.s.-pts.s[1]
-    M=length(pts)
-    xy=Vector{SVector{2,T}}(undef,n*M)
-    normal=Vector{SVector{2,T}}(undef,n*M)
-    s=Vector{T}(undef,n*M)
-    ds=Vector{T}(undef,n*M)
-    curvature=Vector{T}(undef,n*M)
-    @inbounds for l in 0:n-1
-        off=l*M
-        img=l==0 ? nothing : BilliardGeometry.NFoldRotation(n,l,sym.sector)
-        for q in 1:M
-            j=off+q
-            xy[j]=l==0 ? pts.xy[q] : BilliardGeometry.apply_symmetry(img,pts.xy[q])
-            normal[j]=l==0 ? pts.normal[q] : BilliardGeometry.apply_symmetry(img,pts.normal[q])
-            s[j]=T(l)*L+sf[q]
-            ds[j]=pts.ds[q]
-            curvature[j]=pts.curvature[q]
-        end
-    end
-    return BoundaryPoints(xy;normal=normal,s=s,ds=ds,curvature=curvature)
-end
-
-# Expand a rotational fundamental sector when the active Cn symmetry is stored as all nontrivial rotation images.
-function _expand_bim_boundary(pts::BoundaryPoints{T},syms::AbstractVector{<:BilliardGeometry.NFoldRotation},L::T) where {T<:Real}
-    isempty(syms)&&return pts
-    n=syms[1].order
-    sector=syms[1].sector
-    all(sym.order==n&&sym.sector==sector for sym in syms)||throw(ArgumentError("All rotational symmetry images must have identical order and sector"))
-    return _expand_bim_boundary(pts,BilliardGeometry.NFoldRotation(n,1,sector),L)
-end
-
-# Reject symmetry types for which no BIM fundamental-boundary expansion convention has been implemented.
-function _expand_bim_boundary(pts::BoundaryPoints,sym::BilliardGeometry.AbsSymmetry,L)
-    throw(ArgumentError("BoundaryIntegralMethod symmetry expansion is not implemented for $(typeof(sym))"))
+    return BoundaryPoints(vcat(xy_all...);normal=vcat(normal_all...),s=vcat(s_all...),ds=vcat(ds_all...),curvature=vcat(κ_all...))
 end
 
 """
@@ -226,16 +134,9 @@ operator is subsequently performed through `SymmetryOrbitMap`.
 * `BoundaryPoints{T}`: Complete physical-boundary discretization.
 """
 function evaluate_points(solver::BoundaryIntegralMethod{T},billiard::Bi,k) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
-    if isnothing(solver.symmetry)
-        curves=billiard.full_boundary
-        bs,samplers=_adjust_scaling_and_samplers(solver,length(curves))
-        return _evaluate_bim_curves(solver,curves,bs,samplers,k)
-    end
-    curves=BilliardGeometry.get_boundary_curves(billiard)
-    bs,samplers=adjust_scaling_and_samplers(solver,billiard)
-    pts=_evaluate_bim_curves(solver,curves,bs,samplers,k)
-    L=sum(T(crv.length) for crv in curves)
-    return _expand_bim_boundary(pts,solver.symmetry,L)
+    curves=billiard.full_boundary
+    bs,samplers=_adjust_scaling_and_samplers(solver,length(curves))
+    return _evaluate_bim_curves(solver,curves,bs,samplers,k)
 end
 
 ################################################################################
