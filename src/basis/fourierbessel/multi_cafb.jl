@@ -360,12 +360,7 @@ same origin `c₀` in its scaling weight
 
     rₙ = (x-c₀)⋅n.
 """
-@inline function dk_fun(
-    basis::MultiCornerAdaptedFourierBessel,
-    i::Int,
-    k::T,
-    pts::AbstractArray
-) where {T<:Real}
+@inline function dk_fun(basis::MultiCornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
     block,local_index=_global_to_local_basis_index(basis,i)
     dBx,dBy=gradient(basis.blocks[block],local_index,k,pts)
     x0,y0=basis.scaling_origin
@@ -524,33 +519,19 @@ each block independently. Independent block derivatives correspond to
 dilations about different CAFB centers and therefore do not define a common
 Vergini-Saraceno scaling transformation.
 """
-function dk_fun(
-    basis::MultiCornerAdaptedFourierBessel,
-    indices::AbstractArray,
-    k::T,
-    pts::AbstractArray;
-    multithreaded::Bool=true
-) where {T<:Real}
+function dk_fun(basis::MultiCornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     M=length(pts);N=length(indices)
     dB=Matrix{T}(undef,M,N)
     columns,local_indices=_group_basis_indices_by_block(basis,indices)
     x0,y0=basis.scaling_origin
-
     @inbounds for block in eachindex(basis.blocks)
         cols=columns[block]
         isempty(cols)&&continue
-        dBx,dBy=gradient(
-            basis.blocks[block],
-            local_indices[block],
-            k,
-            pts;
-            multithreaded=multithreaded
-        )
+        dBx,dBy=gradient(basis.blocks[block],local_indices[block],k,pts;multithreaded=multithreaded)
         @views dBb=dB[:,cols]
         for c in eachindex(cols)
             @simd for j in 1:M
-                dBb[j,c]=((pts[j][1]-x0)*dBx[j,c]+
-                          (pts[j][2]-y0)*dBy[j,c])/k
+                dBb[j,c]=((pts[j][1]-x0)*dBx[j,c]+(pts[j][2]-y0)*dBy[j,c])/k
             end
         end
     end
