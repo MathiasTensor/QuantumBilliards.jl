@@ -136,8 +136,9 @@ operator is subsequently performed through `SymmetryOrbitMap`.
 function evaluate_points(solver::BoundaryIntegralMethod{T},billiard::Bi,k) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     boundary=billiard.full_boundary
     comps=_boundary_components(boundary)
-    bs,samplers=_adjust_scaling_and_samplers(solver,length(comps))
-    return _evaluate_bim_curves(solver,comps,bs,samplers,k)
+    curves=vcat(comps...)
+    bs,samplers=_adjust_scaling_and_samplers(solver,length(curves))
+    return _evaluate_bim_curves(solver,curves,bs,samplers,k)
 end
 
 ################################################################################
