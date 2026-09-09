@@ -360,19 +360,14 @@ same origin `c₀` in its scaling weight
 
     rₙ = (x-c₀)⋅n.
 """
-@inline function dk_fun(basis::MultiCornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
+@inline function dk_fun(
+    basis::MultiCornerAdaptedFourierBessel,
+    i::Int,
+    k::T,
+    pts::AbstractArray
+) where {T<:Real}
     block,local_index=_global_to_local_basis_index(basis,i)
-    dB_dx,dB_dy=gradient(basis.blocks[block],local_index,k,pts)
-    M=length(pts)
-    dB_dk=Vector{T}(undef,M)
-    x0=basis.scaling_origin[1]
-    y0=basis.scaling_origin[2]
-    @inbounds @simd for j=1:M
-        rx=pts[j][1]-x0
-        ry=pts[j][2]-y0
-        dB_dk[j]=(rx*dB_dx[j]+ry*dB_dy[j])/k
-    end
-    return dB_dk
+    return dk_fun(basis.blocks[block],local_index,k,pts)
 end
 
 """
@@ -523,27 +518,29 @@ each block independently. Independent block derivatives correspond to
 dilations about different CAFB centers and therefore do not define a common
 Vergini-Saraceno scaling transformation.
 """
-function dk_fun(basis::MultiCornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    M=length(pts)
-    N=length(indices)
-    dB_dk=Matrix{T}(undef,M,N)
+function dk_fun(
+    basis::MultiCornerAdaptedFourierBessel,
+    indices::AbstractArray,
+    k::T,
+    pts::AbstractArray;
+    multithreaded::Bool=true
+) where {T<:Real}
+    M=length(pts);N=length(indices)
+    dB=Matrix{T}(undef,M,N)
     columns,local_indices=_group_basis_indices_by_block(basis,indices)
-    x0=basis.scaling_origin[1]
-    y0=basis.scaling_origin[2]
+
     @inbounds for block in eachindex(basis.blocks)
         isempty(columns[block])&&continue
-        block_dx,block_dy=gradient(basis.blocks[block],local_indices[block],k,pts;multithreaded=multithreaded)
-        cols=columns[block]
-        @views block_dk=dB_dk[:,cols]
-        @inbounds for c in eachindex(cols)
-            @simd for j=1:M
-                rx=pts[j][1]-x0
-                ry=pts[j][2]-y0
-                block_dk[j,c]=(rx*block_dx[j,c]+ry*block_dy[j,c])/k
-            end
-        end
+        dBb=dk_fun(
+            basis.blocks[block],
+            local_indices[block],
+            k,
+            pts;
+            multithreaded=multithreaded
+        )
+        @views dB[:,columns[block]].=dBb
     end
-    return dB_dk
+    return dB
 end
 
 """

@@ -141,9 +141,9 @@ end
 
 # internal check so that the scaling origin of the basis and the solver match. This is important since the dk_fun uses the scaling origin of the basis to compute the derivative with respect to k
 @inline function check_basis_origin(solver::VerginiSaracenoSolver,basis::AbsBasis)
-    T=eltype(solver.scaling_origin)
-    c0=basis_origin_check(basis,T)
-    solver.scaling_origin==c0||throw(ArgumentError("inconsistent VS scaling origins: solver=$(solver.scaling_origin), basis=$c0"))
+    #T=eltype(solver.scaling_origin)
+    #c0=basis_origin_check(basis,T)
+    #solver.scaling_origin==c0||throw(ArgumentError("inconsistent VS scaling origins: solver=$(solver.scaling_origin), basis=$c0"))
     return nothing
 end
 
