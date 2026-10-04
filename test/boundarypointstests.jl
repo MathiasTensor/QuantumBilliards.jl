@@ -151,22 +151,18 @@ end
     @test points_in_billiard([far_pt], billiard) == [false]
 end
 
-@testset "estimate_rmin_rmax" begin
+@testset "Chebyshev radial interval from boundary geometry cache" begin
     xy = SVector{2,Float64}[(0,0),(1,0),(1,1),(0,1)]
-    pts = BoundaryPoints(xy)
-    rmin, rmax = estimate_rmin_rmax(pts, nothing)
-    @test isapprox(rmin, 1.0; atol=1e-10)
-    @test isapprox(rmax, sqrt(2); atol=1e-10)
-
-    # symmetry-reduced variant, evaluated on the complete physical boundary
-    # discretization (BilliardGeometry.full_boundary): sanity-checked against
-    # the direct pairwise version on the same points.
-    billiard = StadiumBilliard(0.3)
-    solver = DoubleLayerPotentialSolver(10.0; symmetry=BilliardGeometry.YAxisReflection())
-    bpts = evaluate_points(solver, billiard, 5.5)
-    rmin_full, rmax_full = estimate_rmin_rmax(bpts, nothing)
-    rmin_sym, rmax_sym = estimate_rmin_rmax(bpts, solver.symmetry)
-    @test rmin_sym > 0 && isfinite(rmin_sym)
-    @test rmax_sym > 0 && isfinite(rmax_sym)
-    @test rmax_sym <= rmax_full + 1e-8
+    pts = BoundaryPoints(xy; tangent=fill(SVector(1.0,0.0),4),
+                         tangent_2=fill(SVector(0.0,0.0),4),
+                         ts=collect(0:3) .* (pi/2))
+    cache = boundary_geom_cache(pts)
+    # estimate_rmin_rmax was removed; the active Chebyshev path uses this cache.
+    rmin,rmax = QuantumBilliards._cheb_geom_rminmax(cache,ComplexF64[2];pad=(1.0,1.0))
+    @test isapprox(rmin,1.0;atol=1e-10)
+    @test isapprox(rmax,sqrt(2);atol=1e-10)
+    padded_min,padded_max = QuantumBilliards._cheb_geom_rminmax(cache,ComplexF64[2,60])
+    @test isapprox(padded_min,0.95;atol=1e-10)
+    @test isapprox(padded_max,1.05sqrt(2);atol=1e-10)
+    @test_throws ArgumentError QuantumBilliards._cheb_geom_rminmax(cache,ComplexF64[2];pad=(2.0,1.0))
 end
