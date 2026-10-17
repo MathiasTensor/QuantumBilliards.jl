@@ -4,6 +4,7 @@ makedocs(sitename="QuantumBilliards.jl",
 pages = [
     "index.md",
     "tutorial.md",
+    "weighted_corners.md",
     "API.md"
 ],
 format = Documenter.HTML(

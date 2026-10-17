@@ -99,6 +99,8 @@ reduction is applied to the globally coupled full-boundary operator.
 """
 function CompositeBIMSolver(component_solvers::Vararg{SweepBIMSolver})
     isempty(component_solvers) && throw(ArgumentError("CompositeBIMSolver requires at least one component solver"))
+    any(cs -> cs isa CombinedFieldIntegralEquationSolver && cs.grading isa WeightedCornerGrading, component_solvers) &&
+        throw(ArgumentError("WeightedCornerGrading uses a physical normal density and cannot be mixed with layer-density blocks in CompositeBIMSolver; use a single CFIE on the complete physical boundary"))
     symmetry = component_solvers[1].symmetry
     sym_characters = component_solvers[1].sym_characters
     all(cs -> cs.symmetry == symmetry && cs.sym_characters == sym_characters, component_solvers) || throw(ArgumentError("All component solvers passed to CompositeBIMSolver must share the same symmetry and sym_characters"))

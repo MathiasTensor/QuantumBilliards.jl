@@ -25,3 +25,8 @@ Each method has its own strengths and limitations and is more suitable for speci
 - Highly tunable numerical parameters, integration schemes and basis constructions for fine tuning to specific geometries.
 - Discrete symmetry reduction schemes, allows separation fo spectral symmetry sectors and improved computation efficiency.  
 - Extensible API ready for future updates to related problems like microwave resonators, neutrino billiards etc.
+
+CFIE solvers also provide opt-in angle-adapted physical-density panels via
+`grading=WeightedCornerGrading()`, including the mushroom geometry from
+BilliardGeometry. See [the mathematical description and usage](docs/src/weighted_corners.md)
+and [the reproducible mushroom convergence benchmark](benchmarks/weighted_corners.jl).

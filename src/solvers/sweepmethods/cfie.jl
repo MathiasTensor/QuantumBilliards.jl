@@ -26,15 +26,20 @@
 # which develops minima approaching zero at the Dirichlet eigenvalues.
 #
 # BOUNDARY DISCRETIZATION
-# All boundary discretizations use the Kress quadrature scheme for both the
+# The periodic policies use the Kress quadrature scheme for both the
 # double- and single-layer Helmholtz kernels. Smooth closed boundary components
 # use the original periodic parametrization sampled on a midpoint grid.
 # CornerGrading applies a single-corner Kress grading map to a closed curve
 # whose parametric corner is known at the periodic endpoint, while
 # GlobalCornerGrading detects true geometric corners and applies a global
 # Kress grading map around them. Thus the grading strategy changes the boundary
-# parametrization, while the underlying Kress quadrature scheme is used in all
-# cases.
+# parametrization.
+#
+# WeightedCornerGrading instead uses physical q=∂ₙψ, ψ=S q and
+# B(k)=I-2K′(k)-2ikS(k), where K′ differentiates the target normal.
+# Its local weighted source cardinals and Gaussian logarithmic integration
+# are derived in weighted_corner_geometry.jl and weighted_corner_assembly.jl.
+# All spectral solvers retain the same root extraction and residual checks.
 ################################################################################
 
 """
@@ -51,13 +56,15 @@ where `D(k)` and `S(k)` are the Helmholtz double- and single-layer boundary
 operators in the normalization used by this implementation. Dirichlet
 eigenvalues correspond to wavenumbers for which `A(k)` becomes singular.
 
-All boundary discretizations use the Kress quadrature scheme for both kernel
+The periodic policies use the Kress quadrature scheme for both kernel
 contributions. [`SmoothPeriodicGrading`](@ref) uses the original periodic
 boundary parametrization, [`CornerGrading`](@ref) applies a single-corner
 Kress grading map to a closed curve with a known parametric corner, and
 [`GlobalCornerGrading`](@ref) applies a global Kress grading map around
 detected geometric corners. An optional discrete symmetry reduces the
 resulting full-boundary Fredholm operator to a selected symmetry sector.
+[`WeightedCornerGrading`](@ref) selects the physical normal-density adjoint
+CFIE and local product quadrature, with its own angle-adapted source space.
 
 ## Attributes
 * `pts_scaling_factor::Vector{T}`: Boundary-point scaling factors used to determine the discretization size.
@@ -87,9 +94,12 @@ end
     CombinedFieldIntegralEquationSolver(pts_scaling_factor::Union{T,Vector{T}}, billiard::Bi; min_pts::Int=200, grading::BoundaryGrading=SmoothPeriodicGrading(), symmetry::Union{Nothing,AbsSymmetry}=nothing, sym_characters::Tuple=(), eps::T=T(1e-15)) where {T<:Real, Bi<:AbsBilliard}
 
 Construct a combined-field boundary-integral solver.
-All boundary discretizations use the Kress quadrature scheme for the
-double- and single-layer kernels. `grading` controls the periodic boundary
-parametrization on which this quadrature is applied.
+The periodic policies use Kress quadrature for the combined-layer density
+`μ`. The opt-in [`WeightedCornerGrading`](@ref) instead selects the physical
+normal density `q=∂ₙψ` and the adjoint CFIE `B=I-2K′-2ikS`, with local Gaussian
+logarithmic product integration. Its known endpoint powers enter the source
+cardinals. The two representations have the same physical Dirichlet spectrum;
+their discrete matrices and stored densities are different.
 
 If `symmetry` is left as `nothing` and `sym_characters` is non-empty, the
 symmetry is inferred directly from `billiard`'s minimal registered generators
@@ -103,7 +113,7 @@ different (e.g. non-minimal) symmetry representation instead.
 
 ## Keyword Arguments
 * `min_pts::Int = 200`: Minimum number of boundary sampling points.
-* `grading::BoundaryGrading = SmoothPeriodicGrading()`: Boundary parametrization strategy used with the Kress quadrature scheme.
+* `grading::BoundaryGrading = SmoothPeriodicGrading()`: Periodic Kress policy, or `WeightedCornerGrading()` for angle-adapted physical-density panels (Float64, one closed physical component).
 * `symmetry::Union{Nothing,AbsSymmetry} = nothing`: Optional discrete symmetry used to reduce the full-boundary Fredholm operator. When `nothing`, it is inferred from `billiard` and `sym_characters`.
 * `sym_characters::Tuple = ()`: Character tuple selecting the requested representation of `symmetry`, or of the symmetry inferred from `billiard` when `symmetry` is `nothing`.
 * `eps::T = T(1e-15)`: Relative numerical tolerance associated with the solver.
@@ -112,6 +122,7 @@ different (e.g. non-minimal) symmetry representation instead.
 * `solver::CombinedFieldIntegralEquationSolver`: Configured CFIE solver in the requested symmetry sector.
 """
 function CombinedFieldIntegralEquationSolver(pts_scaling_factor::Union{T,Vector{T}}, billiard::Bi; min_pts::Int=200, grading::BoundaryGrading=SmoothPeriodicGrading(), symmetry::Union{Nothing,AbsSymmetry}=nothing, sym_characters::Tuple=(), eps::T=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+    grading isa WeightedCornerGrading && T !== Float64 && throw(ArgumentError("WeightedCornerGrading currently requires Float64 geometry and solver scalars"))
     bs = pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     if symmetry === nothing
         symmetry, sym_characters = _infer_bim_symmetry(billiard, sym_characters)
@@ -489,13 +500,14 @@ end
 
 Construct the boundary discretization used by the CFIE Fredholm operator.
 
-All discretizations are intended for the Kress quadrature scheme used for both
-the double- and single-layer kernels during Fredholm matrix assembly.
+The periodic policies use Kress quadrature for both layer kernels.
 [`SmoothPeriodicGrading`](@ref) samples the original periodic boundary
 parametrization, [`CornerGrading`](@ref) applies a single-corner Kress grading
 map to a closed curve with a known parametric corner, and
 [`GlobalCornerGrading`](@ref) applies a global Kress grading map around
-detected geometric corners.
+detected geometric corners. [`WeightedCornerGrading`](@ref) uses local Gaussian
+panels and weighted physical-density interpolation; see its derivation and
+resolution controls in the policy docstring.
 
 The complete physical boundary is always discretized. When a symmetry sector
 is present, the resulting full-boundary Fredholm operator is subsequently
@@ -532,7 +544,7 @@ algebraic symmetry reduction when a symmetry sector is active.
 function boundary_matrix_size(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints)
     solver.symmetry === nothing && return boundary_matrix_size(pts)
     T = _bim_numeric_type(solver)
-    orbits = _fold_boundary(T, solver.billiard, length(pts), solver.symmetry, solver.sym_characters)
+    orbits = _fold_boundary(T, solver.billiard, pts, solver.symmetry, solver.sym_characters)
     return fundamental_size(orbits)
 end
 
@@ -550,6 +562,11 @@ graded, and globally corner-graded boundary parametrizations.
 If `solver.symmetry` is present, the complete full-boundary Fredholm operator
 is folded over source symmetry orbits with the prescribed character phases.
 
+For `WeightedCornerGrading`, this method instead assembles
+`B(k)=I-2K′(k)-2ikS(k)` for physical `q=∂ₙψ`. Both target-normal and single-layer
+terms integrate the weighted source cardinals. The identity remains nodal,
+and the actual panel-node permutation determines symmetry reduction.
+
 ## Arguments
 * `solver::CombinedFieldIntegralEquationSolver`: CFIE solver defining the discretization and symmetry sector.
 * `pts::BoundaryPoints`: Complete physical-boundary discretization.
@@ -562,6 +579,7 @@ is folded over source symmetry orbits with the prescribed character phases.
 * `A::Matrix{Complex{T}}`: Full or symmetry-reduced Fredholm matrix `A(k) = I - (D(k) + i k S(k))`.
 """
 function construct_matrices(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k; multithreaded::Bool=true)
+    pts.density_space === nothing || return first(_weighted_corner_matrices(solver, pts, k, 0; multithreaded))
     @timeit_debug "construct_matrices" begin
         T = _bim_numeric_type(solver)
         kT = _bim_widen_k(T, k)
@@ -585,7 +603,7 @@ function construct_matrices(solver::CombinedFieldIntegralEquationSolver, pts::Bo
             return A
         else
             @timeit_debug "symmetry_orbits" begin
-                orbits = _fold_boundary(T, solver.billiard, N, solver.symmetry, solver.sym_characters)
+                orbits = _fold_boundary(T, solver.billiard, pts, solver.symmetry, solver.sym_characters)
             end
             m = fundamental_size(orbits)
             A = Matrix{Complex{T}}(undef, m, m)
@@ -613,7 +631,10 @@ scheme. The tension is defined as its smallest singular value,
     t(k) = σmin(A(k)).
 
 With `use_krylov = true`, the smallest singular value is computed iteratively
-with KrylovKit. Otherwise, all singular values are computed with a dense SVD.
+with KrylovKit for periodic policies. Weighted physical-density panels always
+use LAPACK SVD: an unconverged Krylov triplet can report a false zero near a
+corner-localized state. This selected-wavenumber tension calculation is
+separate from Beyn/CORK contour root extraction.
 
 ## Arguments
 * `solver::CombinedFieldIntegralEquationSolver`: CFIE solver defining the boundary discretization and symmetry sector.
@@ -630,7 +651,7 @@ with KrylovKit. Otherwise, all singular values are computed with a dense SVD.
 function solve(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k; multithreaded::Bool=true, use_krylov::Bool=true)
     T = _bim_numeric_type(solver)
     A = construct_matrices(solver, pts, k; multithreaded)
-    if use_krylov
+    if use_krylov && pts.density_space === nothing
         @blas_1 vals, _, _, _ = KrylovKit.svdsolve(A, 1, :SR)
         return vals[1]
     else
@@ -650,9 +671,11 @@ The Fredholm matrix
 
 is assembled with [`construct_matrices`](@ref) using the Kress quadrature
 scheme. Its smallest singular triplet is then computed with KrylovKit. The
-returned vector is the right singular vector associated with the smallest
+weighted physical-density panels use LAPACK SVD instead, without iterative
+convergence assumptions. The returned vector is the right singular vector associated with the smallest
 singular value and represents the discrete combined-field layer density on
-the assembled boundary degrees of freedom.
+the assembled boundary degrees of freedom. With `WeightedCornerGrading` it
+represents physical `q=∂ₙψ` on the reduced or full density nodes instead of `μ`.
 
 At a Dirichlet eigenvalue this vector approximates a null vector of the
 Kress-discretized Fredholm operator,
@@ -674,6 +697,14 @@ Kress-discretized Fredholm operator,
 function solve_vect(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k; multithreaded::Bool=true)
     T = _bim_numeric_type(solver)
     A = construct_matrices(solver, pts, k; multithreaded)
+    if pts.density_space !== nothing
+        # Resolve the selected physical-density nullvector reliably. An
+        # unconverged smallest-singular Krylov triplet can report a false zero.
+        @blas_multi_then_1 MAX_BLAS_THREADS factorization = svd(A)
+        return factorization.S[end], conj.(@view factorization.Vt[end,:])
+    end
     @blas_1 vals, _, rvecs, _ = KrylovKit.svdsolve(A, 1, :SR)
     return vals[1], Vector{Complex{T}}(rvecs[1])
 end
+# Weighted panels select the physical normal-density CFIE and its source rules.
+_cfie_evaluate_points(solver::CombinedFieldIntegralEquationSolver, ::WeightedCornerGrading, comp::Vector, k::T) where {T<:Real} = _weighted_corner_points(solver, comp, k)

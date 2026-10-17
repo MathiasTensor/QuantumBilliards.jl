@@ -13,6 +13,7 @@ using KrylovKit
 using Printf
 using ProgressMeter
 using MKL
+import FastGaussQuadrature
 
 #abstract types
 include("abstracttypes.jl")
@@ -51,12 +52,14 @@ include("solvers/chebyshev/bessels.jl")
 include("solvers/sweepmethods/decompositionmethod.jl")
 include("solvers/sweepmethods/particularsolutions.jl")
 include("solvers/sweepmethods/boundarygrading.jl")
+include("solvers/weighted_corner_geometry.jl")
 include("solvers/sweepmethods/dlp.jl")
 include("solvers/sweepmethods/cfie.jl")
 include("solvers/sweepmethods/compositebim.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 include("solvers/acceleratedmethods/chebyshevconfig.jl")
 include("solvers/taylor/bim_kernels_recurrence.jl")
+include("solvers/weighted_corner_assembly.jl")
 include("solvers/acceleratedmethods/verginisaraceno.jl")
 include("solvers/acceleratedmethods/ebim.jl")
 include("solvers/acceleratedmethods/beyn.jl")
@@ -70,7 +73,7 @@ export SweepBIMSolver, AcceleratedBIMSolver
 export VerginiSaracenoSolver, print_benchmark_info
 export DecompositionMethodSolver
 export ParticularSolutionsMethodSolver
-export BoundaryGrading, SmoothPeriodicGrading, CornerGrading, GlobalCornerGrading
+export BoundaryGrading, SmoothPeriodicGrading, CornerGrading, GlobalCornerGrading, WeightedCornerGrading
 export DoubleLayerPotentialSolver, CombinedFieldIntegralEquationSolver, CompositeBIMSolver
 export ExpandedBIMSolver, BeynSolver, CORKSolver
 export ChebyshevConfig

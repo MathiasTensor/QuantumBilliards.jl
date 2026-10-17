@@ -1,4 +1,86 @@
 """
+    WeightedDensityPanel{T<:Real}
+
+One polynomial amplitude panel on a retained physical curve span. `left:right`
+is the original curve parameter span; `tleft:tright` is a subinterval of its
+power coordinate `t`. For a left corner, `u=left+(right-left)t^power`; for a
+right corner, `u=right-(right-left)(1-t)^power`. The physical density is
+`q(t)=ξ^(power*(lambda-1))*v(t)`, with `ξ=t` or `1-t` and `lambda=π/α`.
+
+`nodes`, `barycentric_weights`, and `density_factors` define the cardinal
+functions of `v`, while `indices` always refer to physical nodal values of
+`q`. `curve_index` selects the original curve in `WeightedDensitySpace.curves`.
+These numeric records contain no sampled kernel or eigenvalue.
+"""
+struct WeightedDensityPanel{T<:Real}
+    curve_index::Int
+    left::T
+    right::T
+    tleft::T
+    tright::T
+    reverse::Bool
+    lambda::T
+    power::T
+    source_order::Int
+    indices::UnitRange{Int}
+    nodes::Vector{T}
+    barycentric_weights::Vector{T}
+    density_factors::Vector{T}
+end
+
+"""
+    WeightedSourceRule{T<:Real}
+
+Owned source geometry and integrated physical-density cardinal matrices.
+Rows of `basis` are source samples and columns are density unknowns on one
+panel. They already include source quadrature weights and physical speed.
+`logbasis` contains the additional logarithmic product correction, or is empty
+for an ordinary rule. `parameters` are the panel's power-coordinate samples.
+The source rule has no spectral dependence and is reused across contour nodes.
+Target-owned near/self rules also store `distances` and `normal_projections`.
+These retain cancellation-free same-chart chord geometry. Shared far rules
+leave those two arrays empty because their geometry depends on the target.
+"""
+struct WeightedSourceRule{T<:Real}
+    parameters::Vector{T}
+    xy::Vector{SVector{2,T}}
+    basis::Matrix{T}
+    logbasis::Matrix{T}
+    distances::Vector{T}
+    normal_projections::Vector{T}
+end
+
+WeightedSourceRule{T}(parameters,xy,basis,logbasis) where {T<:Real} =
+    WeightedSourceRule{T}(parameters,xy,basis,logbasis,T[],T[])
+
+"""
+    WeightedDensitySpace{T<:Real}
+
+Geometry and interpolation ownership for physical normal-derivative densities.
+`panels` and `curves` retain the original physical charts and their coordinate
+maps. Curve dispatch occurs once per setup panel; hot kernel loops use only
+concrete numeric arrays from `source_cache`. `node_panel` and `node_parameter`
+identify the power coordinate of each physical density node.
+
+`norm_weights` integrate the known endpoint power in `|q|² ds` using a Jacobi
+rule. Their bare sum is not an accurate independent geometric perimeter
+estimate. `source_order` is the ordinary minimum integration count; each corner panel captures its own
+larger minimum. Cache keys are `(target_index,panel_index,source_order)`, where
+zero target denotes an ordinary full-panel rule. The lock guards preparation;
+threaded matrix assembly reads completed immutable rules.
+"""
+struct WeightedDensitySpace{T<:Real}
+    panels::Vector{WeightedDensityPanel{T}}
+    curves::Vector{BilliardGeometry.AbsCurve}
+    node_panel::Vector{Int}
+    node_parameter::Vector{T}
+    norm_weights::Vector{T}
+    source_order::Int
+    source_cache::Dict{NTuple{3,Int},Vector{WeightedSourceRule{T}}}
+    source_lock::ReentrantLock
+end
+
+"""
     BoundaryPoints{T<:Real}
 
 Container for sampled boundary geometry, quadrature data, and solver-specific
@@ -40,6 +122,7 @@ All populated node-wise vector fields are required to have the same length as
 * `xR::SVector{2,T}`: Right endpoint for a nonperiodic component.
 * `tL::SVector{2,T}`: Endpoint tangent associated with `xL`.
 * `tR::SVector{2,T}`: Endpoint tangent associated with `xR`.
+* `density_space::Union{Nothing,WeightedDensitySpace{T}}`: Owned physical-density interpolation metadata; `nothing` retains the original discretization.
 
 ## API
 * [`boundary_coords`](@ref)
@@ -76,9 +159,10 @@ struct BoundaryPoints{T<:Real}
     xR::SVector{2,T}
     tL::SVector{2,T}
     tR::SVector{2,T}
+    density_space::Union{Nothing,WeightedDensitySpace{T}}
 
     # Inner constructor with validation
-    function BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR) where T<:Real
+    function BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR, density_space::Union{Nothing,WeightedDensitySpace{T}}=nothing) where T<:Real
         n = length(xy)
         # Validate that non-empty vectors have consistent lengths
         for (name, vec) in [(:normal, normal), (:s, s), (:ds, ds), (:rdotn, rdotn), (:w_vs, w_vs), (:w_dm, w_dm), (:w, w), (:w_n, w_n), (:curvature, curvature), (:tangent, tangent), (:tangent_2, tangent_2), (:ts, ts), (:tphys, tphys), (:ws, ws), (:ws_der, ws_der)]
@@ -86,7 +170,10 @@ struct BoundaryPoints{T<:Real}
                 error("Length of $name ($(length(vec))) must match xy ($n)")
             end
         end
-        new{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR)
+        if density_space !== nothing
+            length(density_space.node_panel) == n && length(density_space.node_parameter) == n && length(density_space.norm_weights) == n || throw(DimensionMismatch("weighted density metadata must match boundary nodes"))
+        end
+        new{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR, density_space)
     end
 end
 
@@ -129,12 +216,13 @@ unspecified scalar fields use their neutral defaults.
 * `xR::SVector{2,T} = zero`: Right endpoint of a nonperiodic component.
 * `tL::SVector{2,T} = zero`: Endpoint tangent associated with `xL`.
 * `tR::SVector{2,T} = zero`: Endpoint tangent associated with `xR`.
+* `density_space::Union{Nothing,WeightedDensitySpace{T}} = nothing`: Optional owned weighted-density space. Existing constructors require no change.
 
 ## Returns
 * `bp::BoundaryPoints{T}`: Boundary discretization containing the supplied data.
 """
-function BoundaryPoints(xy::Vector{SVector{2,T}}; normal=SVector{2,T}[], kappa=T[], s=T[], ds=T[], rdotn=T[], w_vs=T[], w_dm=T[], xy_int=SVector{2,T}[], w=T[], w_n=T[], curvature=T[], shift_x=zero(T), shift_y=zero(T), tangent=SVector{2,T}[], tangent_2=SVector{2,T}[], ts=T[], tphys=T[], ws=T[], ws_der=T[], compid=1, is_periodic=true, xL=SVector{2,T}(zero(T),zero(T)), xR=SVector{2,T}(zero(T),zero(T)), tL=SVector{2,T}(zero(T),zero(T)), tR=SVector{2,T}(zero(T),zero(T))) where T<:Real
-    return BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR)
+function BoundaryPoints(xy::Vector{SVector{2,T}}; normal=SVector{2,T}[], kappa=T[], s=T[], ds=T[], rdotn=T[], w_vs=T[], w_dm=T[], xy_int=SVector{2,T}[], w=T[], w_n=T[], curvature=T[], shift_x=zero(T), shift_y=zero(T), tangent=SVector{2,T}[], tangent_2=SVector{2,T}[], ts=T[], tphys=T[], ws=T[], ws_der=T[], compid=1, is_periodic=true, xL=SVector{2,T}(zero(T),zero(T)), xR=SVector{2,T}(zero(T),zero(T)), tL=SVector{2,T}(zero(T),zero(T)), tR=SVector{2,T}(zero(T),zero(T)), density_space::Union{Nothing,WeightedDensitySpace{T}}=nothing) where T<:Real
+    return BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int, w, w_n, curvature, shift_x, shift_y, tangent, tangent_2, ts, tphys, ws, ws_der, compid, is_periodic, xL, xR, tL, tR, density_space)
 end
 
 """

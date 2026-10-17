@@ -119,6 +119,7 @@ different (e.g. non-minimal) symmetry representation instead.
 * `solver::DoubleLayerPotentialSolver{T,typeof(grading),typeof(symmetry),typeof(billiard),typeof(sym_characters)}`: Configured DLP solver.
 """
 function DoubleLayerPotentialSolver(pts_scaling_factor::Union{T,Vector{T}}, billiard::Bi; min_pts::Int=200, grading::BoundaryGrading=SmoothPeriodicGrading(), symmetry::Union{Nothing,AbsSymmetry}=nothing, sym_characters::Tuple=(), eps::T=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+    grading isa WeightedCornerGrading && throw(ArgumentError("WeightedCornerGrading applies to the physical normal-density CFIE; use CombinedFieldIntegralEquationSolver"))
     bs = pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     if symmetry === nothing
         symmetry, sym_characters = _infer_bim_symmetry(billiard, sym_characters)

@@ -14,6 +14,10 @@
 #     CFIE:   H₀⁽¹⁾, H₁⁽¹⁾
 #     SLP:    H₀⁽¹⁾ through Y₀ = Im H₀⁽¹⁾.
 #
+# Weighted normal-density panels reconstruct ψ=S q using the same physical
+# source cardinals as matrix assembly. Their source refinement and near-target
+# rules are independent of the number of density unknowns.
+#
 # Direct and Chebyshev evaluation use separate kernels so that all types in the
 # threaded spatial loop remain concrete.
 ################################################################################
@@ -281,7 +285,7 @@ Reconstruct BIM eigenstates on a common Cartesian grid.
   density evaluation on the restricted grid remains correct. Matches
   [`plot_boundary!`](@ref)'s fundamental-domain outline convention.
 - `MIN_CHUNK::Int = 4096`: Minimum spatial points per active thread.
-- `use_chebyshev::Bool = true`: Use Chebyshev-accelerated Hankel evaluation.
+- `use_chebyshev::Bool = true`: Use Chebyshev-accelerated Hankel evaluation for periodic densities. Weighted panels use their own accurate local source integration.
 - `show_progress::Bool = true`: Display reconstruction progress.
 - `cheb_config::ChebyshevConfig = ChebyshevConfig(T)`: Chebyshev configuration.
 - `use_NaN_mask::Bool = false`: When `inside_only = true`, fill exterior
@@ -303,7 +307,17 @@ function wavefunction(states::AbstractVector{<:BIMEigenstate{K,T}}, billiard::Ab
     us = density ? Vector{K}[s.vec::Vector{K} for s in states] : Vector{K}[s.u::Vector{K} for s in states]
     bval = T(b)
     xgrid, ygrid, pts, indices, nx, ny = _wavefunction_grid(maximum(ks), billiard, bval; inside_only, fundamental_domain)
-    if density
+    if any(bd.density_space !== nothing for bd in bds)
+        all(bd.density_space !== nothing for bd in bds) || throw(ArgumentError("reconstruct weighted and periodic states in separate batches"))
+        # Both vec and u are physical normal densities on this discretization.
+        # Integrate their weighted cardinals, never periodic-grid Nyström weights.
+        Psi = [fill(use_NaN_mask && inside_only ? Complex{T}(NaN) : zero(Complex{T}), nx, ny) for _ in states]
+        targets = pts[indices]
+        for j in eachindex(states)
+            values = _weighted_corner_potential(bds[j], us[j], ks[j], targets)
+            Psi[j][indices] = values
+        end
+    elseif density
         if use_chebyshev
             plans, ϕ = _density_kernel(kernel, ks, bds, xgrid, ygrid, cheb_config)
             Psi = _evaluate_wavefunctions(ks, us, bds, pts, indices, nx, ny, plans, ϕ, Val(:cheb); MIN_CHUNK, show_progress, use_NaN_mask)

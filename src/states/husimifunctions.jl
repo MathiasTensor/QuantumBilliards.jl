@@ -272,6 +272,8 @@ end
 # BOUNDARYPOINTS API
 ################################################################################
 
+
+
 """
     husimi_function(k::T, pts::BoundaryPoints{T}, u::AbstractVector{Num}; c::Real=10.0, w::Real=7.0, full_p::Bool=false) where {T<:Real,Num<:Number}
 
@@ -293,6 +295,11 @@ Compute the Poincare-Husimi function from a physical boundary discretization.
 * `ps::Vector{T}`: Full signed momentum grid.
 """
 function husimi_function(k::T, pts::BoundaryPoints{T}, u::AbstractVector{Num}; c::Real=10.0, w::Real=7.0, full_p::Bool=false) where {T<:Real,Num<:Number}
+    if pts.density_space !== nothing
+        samples, amplitudes = _weighted_corner_boundary_quadrature(pts,u)
+        L = T(sum(curve.length for curve in pts.density_space.curves))
+        return husimi_function(k,samples,ones(T,length(samples)),amplitudes,L;c,w,full_p)
+    end
     L = sum(pts.ds)
     return husimi_function(k,pts.s,pts.ds,u,L;c=c,w=w,full_p=full_p)
 end
@@ -319,6 +326,11 @@ Compute the Poincare-Husimi function on prescribed phase-space grids.
 * `ps::Vector{T}`: Full signed momentum grid.
 """
 function husimi_function(k::T, pts::BoundaryPoints{T}, u::AbstractVector{Num}, qs::AbstractVector{T}, ps::AbstractVector{T}; w::Real=7.0, full_p::Bool=false) where {T<:Real,Num<:Number}
+    if pts.density_space !== nothing
+        samples, amplitudes = _weighted_corner_boundary_quadrature(pts,u)
+        L = T(sum(curve.length for curve in pts.density_space.curves))
+        return husimi_function(k,samples,ones(T,length(samples)),amplitudes,L,qs,ps;w,full_p)
+    end
     L = sum(pts.ds)
     return husimi_function(k,pts.s,pts.ds,u,L,qs,ps;w=w,full_p=full_p)
 end
@@ -335,7 +347,10 @@ Compute the Poincare-Husimi function of a BIM eigenstate.
 If the physical boundary normal derivative `state.u` is available, it is used
 directly. Otherwise it is reconstructed at `state.k` with [`solve_state`](@ref)
 using the boundary discretization stored in `state.pts`, dispatching on
-[`_bim_kernel`](@ref)`(solver)`.
+[`_bim_kernel`](@ref)`(solver)`. Weighted states already store the physical
+derivative in `vec`; its source cardinals integrate the coherent-state
+projection. The Jacobi boundary-norm weights are not used as linear-density
+integration weights.
 
 ## Arguments
 * `state::BIMEigenstate`: BIM eigenstate.
@@ -354,11 +369,9 @@ using the boundary discretization stored in `state.pts`, dispatching on
 """
 function husimi_function(state::BIMEigenstate{K,T}, billiard::AbsBilliard, solver::AbsBIMSolver; c::Real=10.0, w::Real=7.0, full_p::Bool=false) where {K,T<:Real}
     k=T(real(state.k))
-    u=state.u
-    if u===nothing
-        _,_,u,_=solve_state(_bim_kernel(solver),state.pts,k,billiard)
-    end
+    u, _, _ = boundary_function(state, billiard, solver)
     L=T(sum(crv.length for crv in full_boundary(billiard)))
+    state.pts.density_space === nothing || return husimi_function(k,state.pts,u;c,w,full_p)
     return husimi_function(k,state.pts.s,state.pts.ds,u,L;c=c,w=w,full_p=full_p)
 end
 

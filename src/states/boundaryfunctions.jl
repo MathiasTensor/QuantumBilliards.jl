@@ -45,6 +45,9 @@ derivative:
 \\frac{1}{2k^2}\\int_{\\partial\\Omega} (\\mathbf{n}\\cdot\\mathbf{x})\\, |\\partial_n\\psi|^2\\, ds = 1.
 ```
 
+Weighted corner nodes use the owned Jacobi norm weights, which integrate the
+known power in `|u|² ds`; periodic nodes use `pts.ds`.
+
 This function evaluates the discretized left-hand side, providing a cheap
 normalization consistency check that is computed alongside
 [`boundary_function`](@ref).
@@ -61,10 +64,11 @@ normalization consistency check that is computed alongside
 """
 function _rellich(pts::BoundaryPoints{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
     acc=zero(T)
+    weights = pts.density_space === nothing ? pts.ds : pts.density_space.norm_weights
     @inbounds @simd for i in eachindex(u)
         n=pts.normal[i]
         xy=pts.xy[i]
-        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i]
+        w=(n[1]*xy[1]+n[2]*xy[2])*weights[i]
         acc+=w*abs2(u[i])
     end
     return acc/(2*k^2)
@@ -174,6 +178,10 @@ time, not resampled or re-solved per call.
 *  `norm` : The Rellich-identity value of the raw (pre-rescaling) density used to normalize `u` (`state.bnd_norm`); kept for interface parity with the basis-solver method, not itself expected to be close to `1`.
 """
 function boundary_function(state::BIMEigenstate; b=5.0, multithreaded=true)
+    if state.u === nothing && state.pts.density_space !== nothing && state.vec !== nothing
+        norm = _rellich(state.pts, state.vec, state.k)
+        return state.vec ./ sqrt(norm), state.pts.s, norm
+    end
     return state.u, state.pts.s, state.bnd_norm
 end
 
@@ -192,16 +200,19 @@ Returns the Rellich-normalized boundary normal derivative of a
 state's precomputed `u` is unavailable (e.g. states produced by an
 accelerated BIM solver that only retained a layer density, see
 [`compute_eigenstate`](@ref)). When `state.u !== nothing`, this is identical
-to [`boundary_function(state::BIMEigenstate)`](@ref).
+to [`boundary_function(state::BIMEigenstate)`](@ref). Weighted normal-density
+states already contain `q` in `vec`, so their derivative is recovered and
+normalized directly, without another nullspace solve. Returned samples retain
+their original nonuniform physical arc lengths and corner behavior.
 
 ## Keyword arguments
 *  `b::Real = 5.0` : Unused when `state.u !== nothing`; accepted for interface compatibility.
 *  `multithreaded::Bool = true` : Unused when `state.u !== nothing`; accepted for interface compatibility.
 """
 function boundary_function(state::BIMEigenstate, billiard::AbsBilliard, solver::AbsBIMSolver; b=5.0, multithreaded=true)
-    u = state.u; norm = state.bnd_norm
+    u, _, norm = boundary_function(state)
     if u === nothing
-        _, _, u, norm = solve_state(_bim_kernel(solver), state.pts, state.k, billiard)
+        _, _, u, norm = solve_state(_bim_kernel(solver), state.pts, state.k, billiard; multithreaded)
     end
     return u, state.pts.s, norm
 end
@@ -338,6 +349,74 @@ function momentum_function(u::AbstractVector{U}, s::AbstractVector{T}, ds::Abstr
 end
 
 """
+    _weighted_corner_boundary_quadrature(pts::BoundaryPoints{T},
+        q::AbstractVector{<:Number}) -> Tuple{Vector{T},Vector{Complex{T}}}
+
+Sample the physical source measure `q ds` through its weighted panel cardinals.
+`pts` owns the original curve charts; `q` contains full-boundary physical nodal
+normal derivatives. Return source arc lengths and integrated complex source
+amplitudes. Summing `amplitudes .* f.(s)` approximates `∫q(s)f(s)ds` for a smooth
+boundary test function. Gaussian source weights already enter the amplitudes;
+they must not be multiplied by the separate Jacobi `|q|²` norm weights.
+No keywords are required. Inputs are unchanged and returned vectors are owned.
+"""
+function _weighted_corner_boundary_quadrature(pts::BoundaryPoints{T},q::AbstractVector{<:Number}) where {T<:Real}
+    length(q) == length(pts) || throw(DimensionMismatch("boundary projection needs a full physical density"))
+    space = pts.density_space::WeightedDensitySpace{T}
+    _weighted_corner_source_plan(pts,Int[])
+    rules = lock(space.source_lock) do
+        [only(space.source_cache[(0,p,panel.source_order)]) for (p,panel) in enumerate(space.panels)]
+    end
+    offsets = cumsum(vcat(zero(T),T[curve.length for curve in space.curves]))
+    samples = T[]; amplitudes = Complex{T}[]
+    for (panel,rule) in zip(space.panels,rules)
+        append!(amplitudes,rule.basis * @view(q[panel.indices]))
+        curve = space.curves[panel.curve_index]
+        for t in rule.parameters
+            ξ = panel.reverse ? one(T)-t : t
+            native = panel.reverse ? panel.right-(panel.right-panel.left)*ξ^panel.power : panel.left+(panel.right-panel.left)*ξ^panel.power
+            push!(samples,offsets[panel.curve_index]+T(BilliardGeometry.arc_length(curve,native)))
+        end
+    end
+    return samples, amplitudes
+end
+
+
+"""
+    momentum_function(u::AbstractVector{<:Number}, pts::BoundaryPoints{T})
+        -> Tuple{Vector{T},Vector{T}}
+
+Project a physical boundary derivative onto `exp(-2πim*s/L)`, with
+`m=0:floor(length(u)/2)`. `u` contains full-boundary nodal values and `pts`
+contains their geometry. Periodic/graded points use their physical quadrature;
+weighted corner points integrate the complete source cardinals through
+independent Gaussian samples. This distinction is essential because the
+Jacobi norm weights integrate `|u|²`, rather than the linear density.
+
+No keywords are required. Return squared Fourier coefficients and their
+angular wavenumbers. Inputs are unchanged; vectors are newly allocated.
+"""
+function momentum_function(u::AbstractVector{<:Number},pts::BoundaryPoints{T}) where {T<:Real}
+    pts.density_space === nothing && return momentum_function(u,pts.s,pts.ds)
+    samples, amplitudes = _weighted_corner_boundary_quadrature(pts,u)
+    L = T(sum(curve.length for curve in pts.density_space.curves))
+    frequencies = T.(2pi/L .* (0:div(length(u),2)))
+    power = Vector{T}(undef,length(frequencies))
+    @inbounds for m in eachindex(frequencies)
+        coefficient = zero(Complex{T})
+        for j in eachindex(samples)
+            coefficient += amplitudes[j]*cis(-frequencies[m]*samples[j])
+        end
+        power[m] = abs2(coefficient/L)
+    end
+    if eltype(u) <: Real
+        lastdouble = iseven(length(u)) ? length(power)-1 : length(power)
+        lastdouble >= 2 && (power[2:lastdouble] .*= 2)
+    end
+    return power, frequencies
+end
+
+"""
     momentum_function(state::BIMEigenstate{K,T,S,Bi}; b::Real = 5.0, multithreaded::Bool = true) where {K,T,S<:SweepBIMSolver,Bi} → (power::Vector, ks::Vector)
 
 Computes the momentum-space representation of a [`BIMEigenstate`](@ref)
@@ -351,7 +430,8 @@ discretization is not, in general, uniformly spaced in arc length.
 *  `multithreaded::Bool = true` : Unused, accepted for interface compatibility; `state.u` is already computed by [`compute_eigenstate`](@ref).
 """
 function momentum_function(state::BIMEigenstate; b=5.0, multithreaded=true)
-    return momentum_function(state.u, state.pts.s, state.pts.ds)
+    u, _, _ = boundary_function(state)
+    return momentum_function(u, state.pts)
 end
 
 # Disambiguates `momentum_function(bim_state, billiard)` from the generic
@@ -371,7 +451,7 @@ arc-length-aware [`momentum_function(u, s, ds)`](@ref momentum_function).
 """
 function momentum_function(state::BIMEigenstate, billiard::AbsBilliard, solver::AbsBIMSolver; b=5.0, multithreaded=true)
     u, s, _ = boundary_function(state, billiard, solver; b, multithreaded)
-    return momentum_function(u, s, state.pts.ds)
+    return momentum_function(u, state.pts)
 end
 
 ################################################################################

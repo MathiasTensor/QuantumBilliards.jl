@@ -354,12 +354,24 @@ character and the symmetry-reduced polynomial is constructed.
   elapsed Taylor-Chebyshev assembly time in seconds.
 """
 function build_cork_polynomial(solver::SweepBIMSolver, pts, k0::Float64, Δ::Float64, p::Int; multithreaded::Bool=true)::Tuple{CORKPolynomial,Float64}
+    if pts.density_space !== nothing
+        started = time()
+        coefficients = _weighted_corner_matrices(solver, pts, k0, p; multithreaded)
+        N = size(first(coefficients), 1)
+        C = power_to_cheb(p, Δ)
+        B = zeros(ComplexF64, (p+1)*N, N)
+        # Transform complete matrix coefficients once; no extra kernel calls.
+        for j in 0:p, l in j:2:p
+            axpy!(C[j+1,l+1], coefficients[l+1], @view(B[j*N+1:(j+1)*N,:]))
+        end
+        return CORKPolynomial(B, k0, Δ, p, N), time()-started
+    end
     cache = _taylor_cache(solver,pts)
     if solver.symmetry === nothing
         B,t = build_B_full(cache,k0,Δ,p; multithreaded=multithreaded)
         return CORKPolynomial(B,k0,Δ,p,cache.N),t
     end
-    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64,solver,pts) : _fold_boundary(Float64,solver.billiard,length(pts.xy),solver.symmetry,solver.sym_characters)
+    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64,solver,pts) : _fold_boundary(Float64,solver.billiard,pts,solver.symmetry,solver.sym_characters)
     N = fundamental_size(orbits)
     B,t = build_B_reduced(cache,orbits,k0,Δ,p; multithreaded=multithreaded)
     return CORKPolynomial(B,k0,Δ,p,N),t

@@ -387,3 +387,40 @@ function TaylorWorkspace(p::Int)::TaylorWorkspace
     z() = zeros(ComplexF64, p + 1)
     return TaylorWorkspace(z(), z(), z(), z(), z(), z(), z(), z(), z())
 end
+"""
+    _horner(coefficients::AbstractVector{<:AbstractMatrix}, entry::Int, δ::Number)
+
+Evaluate one linear-indexed entry of `Σₗ coefficients[l+1]*δ^l` without
+allocating matrix temporaries. Coefficients contain ordinary normalized Taylor
+powers; `entry::Int` selects the same element in every coefficient matrix.
+Inputs are read-only. Returns the scalar value at the real or complex offset.
+"""
+@inline function _horner(coefficients::AbstractVector{<:AbstractMatrix}, entry::Int, δ::Number)
+    value = coefficients[end][entry]
+    @inbounds for l in length(coefficients)-1:-1:1
+        value = muladd(δ, value, coefficients[l][entry])
+    end
+    return value
+end
+
+"""
+    _horner_with_12_derivatives(coefficients::AbstractVector{<:AbstractMatrix},
+        entry::Int, δ::Number)
+
+Evaluate one entry of a matrix Taylor polynomial together with its first and
+second derivatives in the unscaled offset `δ`. Differentiating Horner gives
+`ddv ← δ*ddv+2dv`, `dv ← δ*dv+v`, `v ← δ*v+a`. The order matters because each
+update uses the previous value. `entry::Int` is a shared linear index; all
+coefficient matrices are read-only. Returns a scalar `(value, first, second)`
+tuple. Degrees zero and one return exact zero higher derivatives.
+"""
+@inline function _horner_with_12_derivatives(coefficients::AbstractVector{<:AbstractMatrix}, entry::Int, δ::Number)
+    value = coefficients[end][entry]
+    first = zero(value); second = zero(value)
+    @inbounds for l in length(coefficients)-1:-1:1
+        second = muladd(δ, second, 2first)
+        first = muladd(δ, first, value)
+        value = muladd(δ, value, coefficients[l][entry])
+    end
+    return value, first, second
+end

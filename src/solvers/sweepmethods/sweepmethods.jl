@@ -235,7 +235,7 @@ function symmetrize_layer_density(solver::AbsBIMSolver, layer_density::AbstractV
     Nfull = length(pts)
     length(layer_density) == Nfull && return layer_density
     solver.symmetry === nothing && throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected full length $Nfull because no symmetry is active"))
-    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(T, solver, pts) : _fold_boundary(T, billiard, Nfull, solver.symmetry, solver.sym_characters)
+    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(T, solver, pts) : _fold_boundary(T, billiard, pts, solver.symmetry, solver.sym_characters)
     Nred = fundamental_size(orbits)
     length(layer_density) == Nred || throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected reduced $Nred or full $Nfull"))
     S = promote_type(N, Complex{T})
@@ -275,7 +275,7 @@ construction-derived symmetry orbit map as the Fredholm matrix.
 * `u_raw::Vector`: Unnormalized physical boundary normal derivative on the reduced boundary when symmetry is active, or the complete boundary otherwise.
 """
 function _bim_normal_derivative(solver::DLP, pts::BoundaryPoints{T}, lvec::AbstractVector, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    idx = solver.symmetry === nothing ? (1:length(lvec)) : _fold_boundary(T, billiard, length(pts), solver.symmetry, solver.sym_characters).fundamental_indices
+    idx = solver.symmetry === nothing ? (1:length(lvec)) : _fold_boundary(T, billiard, pts, solver.symmetry, solver.sym_characters).fundamental_indices
     return conj.(lvec) ./ pts.ds[idx]
 end
 
@@ -599,7 +599,13 @@ the DLP solver. Unlike the DLP formulation, the CFIE left singular vector is
 not used for this recovery.
 
 Finally, `u_raw` is normalized with the Rellich identity. Thus `vec`, `u`,
-and `pts` all correspond point-for-point to the complete physical boundary.
+and `pts` all correspond point-for-point to the complete physical boundary. With
+`WeightedCornerGrading`, the right nullvector already is the physical normal
+density: `vec=q` and `u=q/sqrt(bnd_norm)`. No periodic differentiation or
+combined-layer conversion is applied. Its Jacobi norm weights integrate
+`|q|² ds`, including the corner power. Selected weighted states use a LAPACK
+singular vector, avoiding unconverged smallest-singular Krylov triplets; this
+adds no per-root SVD to the accelerated spectral solvers.
 
 ## Arguments
 * `solver::CFIE`: CFIE solver used to construct the Fredholm matrix.
@@ -618,11 +624,16 @@ and `pts` all correspond point-for-point to the complete physical boundary.
 """
 function solve_state(solver::CFIE, pts::BoundaryPoints{T}, k, billiard::Bi; multithreaded::Bool = true) where {T<:Real,Bi<:AbsBilliard}
     kT = T(k)
-    A = construct_matrices(solver, pts, kT; multithreaded)
-    @blas_1 vals, _, rvecs, _ = KrylovKit.svdsolve(A, 5, :SR)
-    ten = vals[1]
-    vec = symmetrize_layer_density(solver, Vector{Complex{T}}(rvecs[1]), pts, billiard)
-    u = _cfie_normal_derivative(solver, pts, vec, kT)
+    if pts.density_space === nothing
+        A = construct_matrices(solver, pts, kT; multithreaded)
+        @blas_1 vals, _, rvecs, _ = KrylovKit.svdsolve(A, 5, :SR)
+        ten = vals[1]
+        reduced = Vector{Complex{T}}(rvecs[1])
+    else
+        ten, reduced = solve_vect(solver, pts, kT; multithreaded)
+    end
+    vec = symmetrize_layer_density(solver, reduced, pts, billiard)
+    u = pts.density_space === nothing ? _cfie_normal_derivative(solver, pts, vec, kT) : copy(vec)
     bnd_norm = _rellich(pts, u, kT)
     u ./= sqrt(bnd_norm)
     return ten, vec, u, bnd_norm
