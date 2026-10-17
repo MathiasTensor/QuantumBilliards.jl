@@ -1,0 +1,16 @@
+MushroomBilliard(0.4,1.0;R=1.0); cap radius1, full stem width0.8, height1.
+Both Y-reflection sectors; all boundaries Dirichlet.
+Accuracy windows: k=30 +/-0.2 (4 roots), k=100 +/-0.2 (15 roots).
+Numerical references: weighted ppw24 versus ppw30 with doubled source counts.
+Geometry: BilliardGeometry migrate_solvers commit423daff43f7ab4dd55f5ae411db40bf4ef3929b9.
+Accuracy-grid timings are contended and must not be used as speed claims.
+Runtime: Apple M3 Max, Julia1.11.9, 8 Julia threads, OpenBLAS ILP64, LAPACK budget12.
+Three warmed paired-parity trials, each with a fresh mesh/source cache.
+Beyn: nq40, r24, Taylor degree18, Rmax0.5; default acceptance filters.
+CORK: default p12, block10, mstart500, mstep50, guard0.05, stable_checks1; Rmax0.5.
+The runtime comparison targets complex root error <=1e-8 versus the numerical reference.
+Legacy q4 ppw20 fails that target; ppw24 passes. Weighted ppw10 passes.
+Runtime totals include preparation, assembly, factorization, extraction, validation and vectors.
+Wavefunction evaluation and selected-state SVD are excluded from spectrum timings.
+Beyn residuals are direct Fredholm norms. CORK residuals are projected indicators, not the same norm.
+No Julia binary snapshots or host-specific paths are archived here.

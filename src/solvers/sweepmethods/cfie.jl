@@ -70,7 +70,7 @@ CFIE and local product quadrature, with its own angle-adapted source space.
 * `pts_scaling_factor::Vector{T}`: Boundary-point scaling factors used to determine the discretization size.
 * `billiard::Bi`: Billiard defining the available discrete symmetries.
 * `min_pts::Int64`: Minimum number of boundary sampling points.
-* `grading::G`: [`BoundaryGrading`](@ref) strategy controlling the periodic boundary parametrization used by the Kress quadrature scheme.
+* `grading::G`: [`BoundaryGrading`](@ref) policy selecting periodic Kress quadrature or weighted physical-density panels.
 * `symmetry::Sy`: Optional discrete symmetry used to reduce the full-boundary Fredholm operator.
 * `sym_characters::Ch`: Character tuple selecting the representation of `symmetry`.
 * `eps::T`: Relative numerical tolerance associated with the solver.
@@ -576,7 +576,7 @@ and the actual panel-node permutation determines symmetry reduction.
 * `multithreaded::Bool = true`: Enable multithreaded Fredholm matrix assembly.
 
 ## Returns
-* `A::Matrix{Complex{T}}`: Full or symmetry-reduced Fredholm matrix `A(k) = I - (D(k) + i k S(k))`.
+* `A::Matrix{Complex{T}}`: Full or symmetry-reduced Fredholm matrix; `I-D-ikS` for periodic combined-layer densities, or `I-2K′-2ikS` for weighted physical normal densities.
 """
 function construct_matrices(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k; multithreaded::Bool=true)
     pts.density_space === nothing || return first(_weighted_corner_matrices(solver, pts, k, 0; multithreaded))
@@ -692,7 +692,7 @@ Kress-discretized Fredholm operator,
 
 ## Returns
 * `t::Real`: Smallest singular value `σmin(A(k))` of the Kress-discretized CFIE Fredholm operator.
-* `x::Vector{Complex{T}}`: Right singular vector representing the discrete combined-field layer density associated with `t`.
+* `x::Vector{Complex{T}}`: Right singular vector: combined-layer density for periodic policies or physical normal density for weighted panels.
 """
 function solve_vect(solver::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k; multithreaded::Bool=true)
     T = _bim_numeric_type(solver)

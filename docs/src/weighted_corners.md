@@ -157,3 +157,6 @@ references, not exact solutions. Both root counts and the real-part drift
 matter: a small imaginary part alone does not certify discretization accuracy.
 Use its timing flag only with competing CPU work stopped, and repeat warmed
 solves before drawing speed conclusions.
+
+The [measured mushroom convergence and runtime](weighted_corner_results.md)
+reports the root counts, actual node savings, field checks and warmed timings.

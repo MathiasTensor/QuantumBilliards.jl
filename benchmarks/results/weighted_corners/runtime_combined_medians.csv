@@ -1,0 +1,5 @@
+method,kind,ppw,parities,repetitions,status,nodes_per_full_boundary,matrix_dimension_per_sector,reference_states,median_preparation_seconds,median_solve_seconds,median_total_seconds,timing_isolated
+beyn,weighted,10.0,2,3,complete,1176,588,15,0.001448333,7.631427125,7.632895042000001,true
+beyn,legacy,24.0,2,3,complete,2736,1368,15,0.041740209,13.653414918,13.698570292000001,true
+cork,weighted,10.0,2,3,complete,1176,588,15,0.001483542,3.575343376,3.576842957,true
+cork,legacy,24.0,2,3,complete,2736,1368,15,0.044636208000000004,4.518163375,4.564260083000001,true

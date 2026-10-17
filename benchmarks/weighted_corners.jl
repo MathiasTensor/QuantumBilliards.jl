@@ -29,7 +29,7 @@ const TARGETS = vcat([QB.SVector{2,Float64}(r*cos(angle),r*sin(angle))
     for angle in (QB.FastGaussQuadrature.gausslegendre(9)[1].+1).*pi./2],
     [QB.SVector{2,Float64}(p) for p in ((0.2,-0.2),(-0.25,-0.4),(0.1,-0.65),(-0.3,-0.9))])
 const ISOLATED = get(ENV,"CORNER_BENCH_TIMING_ISOLATED","false") == "true"
-const SOURCE_SIGNATURE = bytes2hex(sha256(join(read(file,String) for
+const SOURCE_SIGNATURE = bytes2hex(sha256(read(@__FILE__,String)*join(read(file,String) for
     file in sort([joinpath(root,name) for (root,_,names) in walkdir(joinpath(dirname(pathof(QB))))
         for name in names if endswith(name,".jl")]))))
 mkpath(OUTPUT)

@@ -5,6 +5,7 @@ pages = [
     "index.md",
     "tutorial.md",
     "weighted_corners.md",
+    "weighted_corner_results.md",
     "API.md"
 ],
 format = Documenter.HTML(
