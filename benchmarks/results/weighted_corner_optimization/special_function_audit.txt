@@ -1,0 +1,19 @@
+Precompiling QuantumBilliards...
+   4545.5 ms  ✓ QuantumBilliards
+  1 dependency successfully precompiled in 6 seconds. 165 already precompiled.
+hankel n=4200 maxrelative=[1.1741007223566732e-15, 3.6282639473778365e-16] maxabsolute=[3.9968028886505635e-15, 0.0038981718325193757]
+STATUS hankel 0.0 + 0.0im sequence=(1, "AmosException with id 1: input error.") public=(1, "AmosException with id 1: input error.")
+STATUS hankel 1.0e-320 + 0.0im sequence=(2, "AmosException with id 2: overflow.") public=(2, "AmosException with id 2: overflow.")
+STATUS hankel 1.0 - 1000.0im sequence=(2, "AmosException with id 2: overflow.") public=(2, "AmosException with id 2: overflow.")
+STATUS hankel 1.0 + 1000.0im sequence=(:ok, (0.0 + 0.0im, 0.0 - 0.0im)) public=(:ok, (0.0 + 0.0im, 0.0 - 0.0im))
+STATUS hankel 1.0e8 + 0.2im sequence=(:ok, (2.624874980777776e-5 + 5.981967138605026e-5im, 5.981967151729401e-5 - 2.6248749508679405e-5im)) public=(:ok, (2.624874980777776e-5 + 5.981967138605026e-5im, 5.981967151729401e-5 - 2.62487495086794e-5im))
+STATUS hankel 1.0e16 + 0.2im sequence=(4, "AmosException with id 4: input argument magnitude too large, complete loss of accuracy by argument reduction.") public=(4, "AmosException with id 4: input argument magnitude too large, complete loss of accuracy by argument reduction.")
+besselj n=4200 maxrelative=[4.501783080167697e-15, 4.4270921399170436e-16] maxabsolute=[3.1092274745367295e-15, 5.84231070433237e-17]
+STATUS besselj 0.0 + 0.0im sequence=(:ok, (1.0 + 0.0im, -0.0 + 0.0im)) public=(:ok, (1.0 + 0.0im, 0.0 + 0.0im))
+STATUS besselj 1.0e-320 + 0.0im sequence=(:ok, (1.0 + 0.0im, 0.0 + 0.0im)) public=(:ok, (1.0 + 0.0im, 0.0 + 0.0im))
+STATUS besselj 1.0 - 1000.0im sequence=(2, "AmosException with id 2: overflow.") public=(2, "AmosException with id 2: overflow.")
+STATUS besselj 1.0 + 1000.0im sequence=(2, "AmosException with id 2: overflow.") public=(2, "AmosException with id 2: overflow.")
+STATUS besselj 1.0e8 + 0.2im sequence=(:ok, (3.270364143737313e-5 - 1.471039593538069e-5im, 7.453006748494917e-5 + 6.454891556043393e-6im)) public=(:ok, (3.270364143737313e-5 - 1.471039593538069e-5im, 7.453006748494917e-5 + 6.4548915560433885e-6im))
+STATUS besselj 1.0e16 + 0.2im sequence=(4, "AmosException with id 4: input argument magnitude too large, complete loss of accuracy by argument reduction.") public=(4, "AmosException with id 4: input argument magnitude too large, complete loss of accuracy by argument reduction.")
+ALLOC Val{:hankel}() bytes=0
+ALLOC Val{:besselj}() bytes=0

@@ -1,0 +1,6 @@
+case,part,before_seconds,after_seconds,repetitions
+"k=100, ppw=10, one sector",Source setup,0.160210291,0.013649833,5
+"k=100, ppw=10, one sector",Taylor matrices,0.165477875,0.107159375,5
+"k=100, ppw=10, one sector",Complex matrix,0.1760195,0.0966325,5
+"k=100, ppw=10, both sectors",Beyn solve,7.700619250000001,6.0341375,3
+"k=100, ppw=10, both sectors",CORK solve,2.7468576660000004,2.486330625,5

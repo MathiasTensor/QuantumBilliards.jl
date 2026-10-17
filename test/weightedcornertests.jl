@@ -7,6 +7,41 @@ using Test, QuantumBilliards, BilliardGeometry, LinearAlgebra, Random
 # mushroom tests additionally retain both reflection sectors and every root.
 const WCT_QB = QuantumBilliards
 
+@testset "Weighted complex Bessel sequences preserve values and failures" begin
+    # Compare against the dependency's independent single-order public API,
+    # including small arguments, both sides of the real axis, large arguments
+    # with AMOS accuracy warnings, underflow, overflow and invalid inputs.
+    arguments = ComplexF64[complex(realpart,imaginary) for
+        realpart in (1e-14,1e-8,0.1,1.0,10.0,100.0,1000.0,1e6)
+        for imaginary in (-0.2,0.0,0.2)]
+    append!(arguments,ComplexF64[0,1+1000im,1-1000im,1e10+0.2im])
+    for kind in (Val(:hankel),Val(:besselj)), argument in arguments
+        expected = try
+            kind === Val(:hankel) ?
+                (WCT_QB.SpecialFunctions.hankelh1(0,argument),WCT_QB.SpecialFunctions.hankelh1(1,argument)) :
+                (WCT_QB.SpecialFunctions.besselj(0,argument),WCT_QB.SpecialFunctions.besselj(1,argument))
+        catch err
+            err
+        end
+        observed = try
+            WCT_QB._weighted_corner_bessel_pair(kind,argument)
+        catch err
+            err
+        end
+        if expected isa Exception
+            @test typeof(observed) === typeof(expected)
+            expected isa WCT_QB.SpecialFunctions.AmosException &&
+                @test observed.id == expected.id
+        else
+            @test observed isa Tuple{ComplexF64,ComplexF64}
+            if observed isa Tuple
+                @test isapprox(observed[1],expected[1];rtol=2e-14,atol=0)
+                @test isapprox(observed[2],expected[2];rtol=2e-14,atol=0)
+            end
+        end
+    end
+end
+
 @testset "Weighted corner quadrature moments" begin
     for exponent in (-1/3, 0.0, 1.0, 2.5)
         x, w = WCT_QB._weighted_corner_gauss_rule(16, exponent)
@@ -22,6 +57,51 @@ const WCT_QB = QuantumBilliards
         @test isapprox(sum(logarithmic .* x.^degree),
             -inv((degree+1)^2); atol=2e-14, rtol=2e-12)
     end
+end
+
+@testset "Weighted Gaussian families retain caller ownership" begin
+    for exponent in (0.0, 1.0, 2.5)
+        nodes, weights = WCT_QB._weighted_corner_gauss_rule(24,exponent)
+        expected_nodes, expected_weights = copy(nodes), copy(weights)
+        fill!(nodes,NaN); fill!(weights,0)
+        fresh_nodes, fresh_weights = WCT_QB._weighted_corner_gauss_rule(24,exponent)
+        @test fresh_nodes == expected_nodes
+        @test fresh_weights == expected_weights
+        @test fresh_nodes !== nodes && fresh_weights !== weights
+    end
+
+    # Rule families are shared across physical charts. Reversing a right
+    # corner or constructing logarithmic weights must not mutate a cached
+    # left-oriented rule, including when task schedules interleave.
+    billiard = MushroomBilliard(0.4,1.0)
+    kernel = CombinedFieldIntegralEquationSolver(6.0,billiard;
+        min_pts=64,grading=WeightedCornerGrading())
+    space = evaluate_points(kernel,billiard,6.0).density_space
+    left = first(filter(p->p.lambda!=1 && !p.reverse && p.tleft==0,space.panels))
+    right = first(filter(p->isapprox(p.lambda,left.lambda;atol=1e-12) &&
+        p.reverse && p.tright==1,space.panels))
+    reference = WCT_QB._weighted_corner_panel_rule(space,left,left.tleft,left.tright,24)
+    basis = copy(reference.basis); parameters = copy(reference.parameters)
+    tasks = map(1:8) do index
+        Threads.@spawn begin
+            panel = isodd(index) ? left : right
+            rule = WCT_QB._weighted_corner_panel_rule(space,panel,
+                panel.tleft,panel.tright,24)
+            a = panel.tleft+(panel.tright-panel.tleft)/3
+            b = panel.tleft+2(panel.tright-panel.tleft)/3
+            logged = WCT_QB._weighted_corner_panel_rule(space,panel,a,b,24;
+                logarithmic=true,target_at_right=iseven(index))
+            (sum(rule.basis),sum(logged.logbasis),all(isfinite,logged.logbasis))
+        end
+    end
+    observations = fetch.(tasks)
+    @test all(record->record[3],observations)
+    @test all(observations[i] == observations[1] for i in 1:2:8)
+    @test all(observations[i] == observations[2] for i in 2:2:8)
+    repeated = WCT_QB._weighted_corner_panel_rule(space,left,left.tleft,left.tright,24)
+    @test repeated.basis == basis
+    @test repeated.parameters == parameters
+    @test reference.basis == basis
 end
 
 @testset "Weighted mushroom geometry and density cardinals" begin
@@ -156,6 +236,35 @@ end
         expected[row,orbits.orbit_of[column]] += full[target,column]*orbits.phase[column]
     end
     @test norm(expected-coefficients[1])/norm(expected) < 2e-13
+
+    # Caches contain geometry and quadrature only. A different Taylor center,
+    # degree, complex direct call or threaded schedule must not contaminate
+    # another spectral evaluation or the physical density norm quadrature.
+    saved_norm = copy(points.density_space.norm_weights)
+    saved_ds = copy(points.ds)
+    previous_blas_threads = BLAS.get_num_threads()
+    threaded = try
+        BLAS.set_num_threads(2)
+        matrices = WCT_QB._weighted_corner_matrices(kernel,points,center,3;
+            multithreaded=true)
+        @test BLAS.get_num_threads() == 2
+        matrices
+    finally
+        BLAS.set_num_threads(previous_blas_threads)
+    end
+    @test maximum(norm(threaded[j]-coefficients[j])/norm(coefficients[j])
+        for j in eachindex(threaded)) < 3e-13
+    changed = WCT_QB._weighted_corner_matrices(kernel,points,center+0.12,2;
+        multithreaded=false)
+    fresh_points = evaluate_points(kernel,billiard,center)
+    @test fresh_points.xy == points.xy
+    fresh = WCT_QB._weighted_corner_matrices(kernel,fresh_points,center+0.12,2;
+        multithreaded=true)
+    @test maximum(norm(changed[j]-fresh[j])/norm(fresh[j])
+        for j in eachindex(fresh)) < 3e-13
+    @test norm(construct_matrices(kernel,points,z;multithreaded=true)-direct)/norm(direct) < 3e-13
+    @test points.density_space.norm_weights == saved_norm
+    @test points.ds == saved_ds
 end
 
 @testset "Weighted circular eigenstate has physical normal density" begin

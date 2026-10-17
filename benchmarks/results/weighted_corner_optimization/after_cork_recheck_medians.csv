@@ -1,0 +1,3 @@
+method,kind,ppw,parity,repetitions,successful_repetitions,status,nodes,matrix_dimension,expected_count,max_root_error,max_imaginary_part,median_preparation_seconds,median_solve_seconds,median_total_seconds,timing_isolated
+cork,weighted,10.0,-1,5,5,complete,1176,588,6,1.4970462032380485e-9,1.3800762952833952e-9,0.0007168750000000001,1.2792765830000001,1.2799882500000002,true
+cork,weighted,10.0,1,5,5,complete,1176,588,9,1.9467409728072614e-9,1.9029004651756977e-9,0.000719083,1.225709417,1.226412625,true

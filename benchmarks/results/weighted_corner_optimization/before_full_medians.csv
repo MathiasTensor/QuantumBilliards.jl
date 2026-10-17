@@ -1,0 +1,5 @@
+method,kind,ppw,parity,repetitions,successful_repetitions,status,nodes,matrix_dimension,expected_count,max_root_error,max_imaginary_part,median_preparation_seconds,median_solve_seconds,median_total_seconds,timing_isolated
+beyn,weighted,10.0,-1,3,3,complete,1176,588,6,1.4971866978159996e-9,1.3801928506963236e-9,0.0007121250000000001,3.4660338750000004,3.4667518750000004,true
+beyn,weighted,10.0,1,3,3,complete,1176,588,9,1.946724681863681e-9,1.90289299731727e-9,0.00071675,4.210253958,4.210988125,true
+cork,weighted,10.0,-1,3,3,complete,1176,588,6,1.4970462099214544e-9,1.3800763025336949e-9,0.00072225,1.558921792,1.5596438750000001,true
+cork,weighted,10.0,1,3,3,complete,1176,588,9,1.9467409473410185e-9,1.9029004391234425e-9,0.000731333,1.544875875,1.545625083,true

@@ -1,0 +1,4 @@
+part,repetitions,median_seconds,median_bytes,full_nodes,matrix_dimension,julia_threads,blas_threads
+Source setup,5,0.160210291,2.09843472e8,1176,588,8,1
+Taylor matrices,5,0.165477875,1.06196448e8,1176,588,8,1
+Complex matrix,5,0.1760195,9.7749904e7,1176,588,8,1

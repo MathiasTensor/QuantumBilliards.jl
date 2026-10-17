@@ -1,0 +1,5 @@
+implementation,parity,final_krylov_dimension,operator_applications,final_physical_rank,root_count,edge_checks_passed
+baseline,-1,550,55,211,6,true
+baseline,1,550,55,212,9,true
+final,-1,550,55,201,6,true
+final,1,550,55,212,9,true

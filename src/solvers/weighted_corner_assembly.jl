@@ -32,6 +32,11 @@
 # Other interactions use the stable full Hankel kernel. Higher k coefficients
 # reuse the existing analytic Bessel differential-equation recurrences, so the
 # direct, Beyn, CORK and expanded-BIM paths share the identical quadrature.
+# On one panel, coefficient assembly is the matrix product K*B+L*B_log,
+# where columns of K,L are kernel Taylor series and rows of B,B_log are
+# integrated physical cardinals. Packing real and imaginary rows separately
+# evaluates this same complex-linear contraction with real BLAS products;
+# it does not conjugate the density or change the quadrature nodes or order.
 ################################################################################
 
 # A subinterval is far enough for its Gaussian source rule when its sampled
@@ -49,6 +54,14 @@ const WEIGHTED_SOURCE_CLOSE_CHORD_RATIO = eps(Float64)^(1/4)
 # Derivative integrals contain no kernel singularity. A roundoff allowance of
 # 32 eps avoids futile subdivision; practical allowances are 8-128 eps.
 const WEIGHTED_SOURCE_DERIVATIVE_TOLERANCE = 32eps(Float64)
+
+# A Gaussian family depends only on its order and endpoint exponent, not on
+# the panel or target. Reuse its reference nodes, ordinary weights and (for
+# Legendre) logarithmic weights. Cached arrays are read-only: each source rule
+# still owns its mapped parameters and cardinal matrices. The lock is used
+# only while preparing rules, never while evaluating a boundary kernel.
+const WEIGHTED_SOURCE_RULE_FAMILIES = Dict{Tuple{Int,Float64},NTuple{3,Vector{Float64}}}()
+const WEIGHTED_SOURCE_RULE_FAMILY_LOCK = ReentrantLock()
 
 """
     _weighted_corner_gauss_rule(order::Int, exponent::Float64=0.0)
@@ -144,10 +157,17 @@ function _weighted_corner_panel_rule(space::WeightedDensitySpace{Float64},panel:
     rightcorner=panel.lambda!=1 && panel.reverse && b==1
     logarithmic && (leftcorner||rightcorner) && throw(ArgumentError("split the corner endpoint away from the logarithmic endpoint"))
     exponent=(leftcorner||rightcorner) ? panel.power*panel.lambda-1 : 0.0
-    x,w=_weighted_corner_gauss_rule(order,exponent)
-    rightcorner && (x .= 1 .- reverse(x); reverse!(w))
-    wl=logarithmic ? _weighted_corner_log_weights(x,w) : Float64[]
-    logarithmic && target_at_right && reverse!(wl)
+    family=lock(WEIGHTED_SOURCE_RULE_FAMILY_LOCK) do
+        get!(WEIGHTED_SOURCE_RULE_FAMILIES,(order,exponent)) do
+            x,w=_weighted_corner_gauss_rule(order,exponent)
+            (x,w,exponent==0 ? _weighted_corner_log_weights(x,w) : Float64[])
+        end
+    end
+    x,w,wl=family
+    # Reflect only owned arrays. In particular reversing a self-logarithm
+    # must not change the family subsequently used by a left endpoint.
+    rightcorner && ((x,w)=(1 .- reverse(x),reverse(w)))
+    wl=logarithmic ? (target_at_right ? reverse(wl) : wl) : Float64[]
     parameters=a .+(b-a).*x
     return _weighted_corner_panel_rule(space.curves[panel.curve_index],panel,parameters,w,wl,x,b-a,logarithmic,target_at_right)
 end
@@ -177,7 +197,13 @@ end
 # Geometric adaptivity changes source integration only, retaining the original
 # weighted trial space. Corner Jacobi factors therefore survive every split.
 function _weighted_corner_separated(space,panel,target,a,b)
-    curve=space.curves[panel.curve_index]
+    return _weighted_corner_separated(space.curves[panel.curve_index],panel,target,a,b)
+end
+
+# Resolve the heterogeneous original curve once, outside the three-point
+# separation test and the source-sample loops below. Its geometry arithmetic
+# then specializes on the actual line, circle or user-defined chart.
+function _weighted_corner_separated(curve::BilliardGeometry.AbsCurve,panel,target,a,b)
     xa=first(_weighted_panel_geometry(curve,panel,a))
     xm=first(_weighted_panel_geometry(curve,panel,(a+b)/2))
     xb=first(_weighted_panel_geometry(curve,panel,b))
@@ -291,10 +317,13 @@ end
 end
 
 function _weighted_corner_cache_pair_geometry!(rules,space,pts,target_index,panel)
+    return _weighted_corner_cache_pair_geometry!(rules,space.curves[panel.curve_index],space,pts,target_index,panel)
+end
+
+function _weighted_corner_cache_pair_geometry!(rules,curve::BilliardGeometry.AbsCurve,space,pts,target_index,panel)
     target=pts.xy[target_index]; normal=pts.normal[target_index]
     target_panel=space.panels[space.node_panel[target_index]]
     same_curve=panel.curve_index==target_panel.curve_index
-    curve=space.curves[panel.curve_index]
     common_endpoint=false; target_offset=zero(target)
     source_anchor=panel.left==0 ? 0.0 : panel.right==1 ? 1.0 : -1.0
     target_anchor=target_panel.left==0 ? 0.0 : target_panel.right==1 ? 1.0 : -1.0
@@ -353,13 +382,15 @@ end
 
 """
     _weighted_corner_source_plan(pts::BoundaryPoints, target_indices;
-        source_order::Int=0)
+        source_order::Int=0, multithreaded::Bool=true)
 
 Prepare geometry-only source quadratures for selected boundary target nodes.
 `source_order=0` retains each panel's ordinary/corner minimum; a positive
 value only increases those minima. Rules are cached in the density space by
 target, panel and order. Cache preparation is locked and finishes before any
-threaded matrix evaluation. Returned nested vectors refer to read-only rules.
+matrix evaluation. Independent targets may be prepared in parallel; the cache
+is read-only during that work and updated afterward. Returned nested vectors
+refer to read-only rules.
 
 ## Arguments
 - `pts::BoundaryPoints{Float64}`: Solved weighted physical-density mesh.
@@ -367,11 +398,12 @@ threaded matrix evaluation. Returned nested vectors refer to read-only rules.
 
 ## Keyword arguments
 - `source_order::Int=0`: Optional stricter minimum; zero retains panel settings.
+- `multithreaded::Bool=true`: Prepare independent target rules in parallel.
 
 ## Returns
 - `Vector{Vector{Vector{WeightedSourceRule{Float64}}}}`: Rules by target and panel.
 """
-function _weighted_corner_source_plan(pts::BoundaryPoints{Float64},target_indices;source_order::Int=0)
+function _weighted_corner_source_plan(pts::BoundaryPoints{Float64},target_indices;source_order::Int=0,multithreaded::Bool=true)
     space=pts.density_space::WeightedDensitySpace{Float64}
     plan=Vector{Vector{Vector{WeightedSourceRule{Float64}}}}(undef,length(target_indices))
     lock(space.source_lock) do
@@ -381,26 +413,82 @@ function _weighted_corner_source_plan(pts::BoundaryPoints{Float64},target_indice
                 [_weighted_corner_panel_rule(space,panel,panel.tleft,panel.tright,order)]
             end
         end
-        for (row,i) in enumerate(target_indices)
+        @use_threads multithreading=(multithreaded && length(target_indices)>1) for row in eachindex(target_indices)
+            i=target_indices[row]
             panels=Vector{Vector{WeightedSourceRule{Float64}}}(undef,length(space.panels))
             for (p,panel) in enumerate(space.panels)
                 order=max(panel.source_order,source_order)
-                panels[p]=get!(space.source_cache,(i,p,order)) do
-                    _weighted_corner_target_rules(space,pts,i,p,order)
-                end
+                existing=get(space.source_cache,(i,p,order),nothing)
+                panels[p]=existing===nothing ? _weighted_corner_target_rules(space,pts,i,p,order) : existing
             end
             plan[row]=panels
+        end
+        for (row,i) in enumerate(target_indices), (p,panel) in enumerate(space.panels)
+            order=max(panel.source_order,source_order)
+            plan[row][p]=get!(space.source_cache,(i,p,order),plan[row][p])
         end
     end
     return plan
 end
 
-@inline function _weighted_corner_radial!(w::TaylorWorkspace,k::Number,r::Float64,degree::Int,split::Bool)
-    z=k*r; h0=ComplexF64(_bim_hankelh1(0,z)); h1=ComplexF64(_bim_hankelh1(1,z))
+"""
+    _weighted_corner_bessel_pair(kind::Union{Val{:hankel},Val{:besselj}},
+        z::ComplexF64) -> Tuple{ComplexF64,ComplexF64}
+
+Evaluate consecutive orders zero and one of `H⁽¹⁾` or `J` in one AMOS call.
+Both orders share AMOS initialization and argument reduction. This is the
+same unscaled algorithm used by SpecialFunctions, without a new asymptotic
+approximation. Real arguments retain the existing faster Bessels path.
+
+The private OpenSpecFun Fortran ABI follows SpecialFunctions 2.9, already
+required by this package: `FNU=0`, `KODE=1`, `N=2`, and `M=1` for Hankel.
+Each output buffer contains two contiguous doubles. Return codes zero and
+three are accepted, and underflow counts are ignored, exactly as in the
+single-order wrappers. Other codes fall back to those public wrappers so
+the paired call never imposes a stricter error policy.
+
+## Arguments
+- `kind::Union{Val{:hankel},Val{:besselj}}`: Select outgoing Hankel or regular
+  Bessel functions through compile-time dispatch.
+- `z::ComplexF64`: Complex radial argument; inputs are unchanged.
+
+## Returns
+- `Tuple{ComplexF64,ComplexF64}`: Function values of orders zero and one.
+"""
+@inline function _weighted_corner_bessel_pair(kind::Union{Val{:hankel},Val{:besselj}},z::ComplexF64)
+    re=Ref{NTuple{2,Float64}}(); ii=Ref{NTuple{2,Float64}}()
+    underflows=Ref{Int32}(); status=Ref{Int32}()
+    if kind isa Val{:hankel}
+        ccall((:zbesh_,SpecialFunctions.libopenspecfun),Cvoid,
+            (Ref{Float64},Ref{Float64},Ref{Float64},Ref{Int32},Ref{Int32},Ref{Int32},
+             Ref{NTuple{2,Float64}},Ref{NTuple{2,Float64}},Ref{Int32},Ref{Int32}),
+            real(z),imag(z),0.0,Int32(1),Int32(1),Int32(2),re,ii,underflows,status)
+    else
+        ccall((:zbesj_,SpecialFunctions.libopenspecfun),Cvoid,
+            (Ref{Float64},Ref{Float64},Ref{Float64},Ref{Int32},Ref{Int32},
+             Ref{NTuple{2,Float64}},Ref{NTuple{2,Float64}},Ref{Int32},Ref{Int32}),
+            real(z),imag(z),0.0,Int32(1),Int32(2),re,ii,underflows,status)
+    end
+    if status[]!=0 && status[]!=3
+        return kind isa Val{:hankel} ? (SpecialFunctions.besselh(0,1,z),SpecialFunctions.besselh(1,1,z)) :
+            (SpecialFunctions.besselj(0,z),SpecialFunctions.besselj(1,z))
+    end
+    return ComplexF64(re[][1],ii[][1]),ComplexF64(re[][2],ii[][2])
+end
+
+@inline function _weighted_corner_radial!(w::TaylorWorkspace,k::Number,r::Float64,degree::Int,split::Bool,normal_derivative::Bool=true)
+    z=k*r
+    # A direct interaction with an exactly zero normal projection needs only
+    # H₀. Taylor transport still needs H₁ to seed the radial derivative of H₀.
+    h0,h1 = degree==0 && !normal_derivative ? (ComplexF64(_bim_hankelh1(0,z)),0.0im) :
+        z isa ComplexF64 ? _weighted_corner_bessel_pair(Val(:hankel),z) :
+        (ComplexF64(_bim_hankelh1(0,z)),ComplexF64(_bim_hankelh1(1,z)))
     if degree==0
         w.H0[1]=k*h0; w.H1[1]=k*h1
         if split
-            w.J0[1]=k*_bim_besselj(0,z,h0); w.J1[1]=k*_bim_besselj(1,z,h1)
+            j0,j1=z isa ComplexF64 && normal_derivative ? _weighted_corner_bessel_pair(Val(:besselj),z) :
+                (_bim_besselj(0,z,h0),normal_derivative ? _bim_besselj(1,z,h1) : 0.0im)
+            w.J0[1]=k*j0; w.J1[1]=k*j1
         end
     else
         kr=Float64(k)
@@ -454,19 +542,27 @@ function _weighted_corner_matrices(solver,pts::BoundaryPoints{Float64},k0::Numbe
     targets=orbits===nothing ? collect(1:N) : orbits.fundamental_indices
     m=length(targets); columns=orbits===nothing ? collect(1:N) : orbits.orbit_of
     phase=orbits===nothing ? ones(ComplexF64,N) : orbits.phase
-    plan=_weighted_corner_source_plan(pts,targets;source_order)
+    plan=_weighted_corner_source_plan(pts,targets;source_order,multithreaded)
     matrices=[zeros(ComplexF64,m,m) for _ in 0:degree]
     # Private workspaces belong to row chunks, rather than thread IDs, so a
     # yielded task cannot share scratch with another task on the same thread.
     chunks=multithreaded ? min(Threads.nthreads(),m) : 1
     largest_panel=maximum(p->length(p.indices),space.panels)
+    largest_order=maximum(p->max(p.source_order,source_order),space.panels)
     @use_threads multithreading=(multithreaded && chunks>1) for chunk in 1:chunks
         w=TaylorWorkspace(degree)
-        panel_coefficients=zeros(ComplexF64,degree+1,largest_panel)
-        for row in chunk:chunks:m
+        # Integrating each cardinal is one small real matrix product. Packing
+        # real and imaginary parts in successive rows retains the complex
+        # operator while allowing BLAS to contract the same real quadrature
+        # matrix without copying it or storing a second complex source cache.
+        panel_coefficients=zeros(Float64,2(degree+1),largest_panel)
+        kernel_coefficients=Matrix{Float64}(undef,2(degree+1),largest_order)
+        logarithmic_coefficients=similar(kernel_coefficients)
+        @inbounds for row in chunk:chunks:m
             i=targets[row]; target=pts.xy[i]; normal=pts.normal[i]
             for (p,panel) in enumerate(space.panels)
                 fill!(panel_coefficients,0)
+                block=@view panel_coefficients[:,1:length(panel.indices)]
                 for rule in plan[row][p]
                     split=!isempty(rule.logbasis)
                     for s in eachindex(rule.xy)
@@ -477,25 +573,24 @@ function _weighted_corner_matrices(solver,pts::BoundaryPoints{Float64},k0::Numbe
                         else
                             r=rule.distances[s]; projection=rule.normal_projections[s]
                         end
-                        _weighted_corner_radial!(w,k,r,degree,split)
+                        _weighted_corner_radial!(w,k,r,degree,split,projection!=0)
                         @simd for l in 1:degree+1
-                            w.a[l]=-(im/2)*projection*w.H1[l]-w.H0[l]/2
-                            w.tmp[l]=split ? (projection*w.J1[l]-im*w.J0[l])/pi : 0.0im
-                        end
-                        # Accumulate contiguous small panel blocks in private
-                        # scratch. Each final dense matrix entry is written
-                        # once per panel, rather than once per source sample.
-                        for j in eachindex(panel.indices)
-                            ordinary=rule.basis[s,j]
-                            correction=split ? rule.logbasis[s,j] : 0.0
-                            @simd for l in 1:degree+1
-                                panel_coefficients[l,j]+=ordinary*w.a[l]+correction*w.tmp[l]
+                            value=-(im/2)*projection*w.H1[l]-w.H0[l]/2
+                            kernel_coefficients[2l-1,s]=real(value)
+                            kernel_coefficients[2l,s]=imag(value)
+                            if split
+                                correction=(projection*w.J1[l]-im*w.J0[l])/pi
+                                logarithmic_coefficients[2l-1,s]=real(correction)
+                                logarithmic_coefficients[2l,s]=imag(correction)
                             end
                         end
                     end
+                    mul!(block,@view(kernel_coefficients[:,1:length(rule.xy)]),rule.basis,1.0,1.0)
+                    split && mul!(block,@view(logarithmic_coefficients[:,1:length(rule.xy)]),rule.logbasis,1.0,1.0)
                 end
                 for (j,column) in enumerate(panel.indices), l in 1:degree+1
-                    matrices[l][row,columns[column]]-=phase[column]*panel_coefficients[l,j]
+                    value=ComplexF64(panel_coefficients[2l-1,j],panel_coefficients[2l,j])
+                    matrices[l][row,columns[column]]-=phase[column]*value
                 end
             end
             matrices[1][row,row]+=1

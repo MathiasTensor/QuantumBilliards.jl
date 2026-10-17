@@ -1,0 +1,13 @@
+Boundary: MushroomBilliard(0.4,1.0;R=1.0), window 99.8-100.2, both requested Y parities.
+Weighted ppw=10. Legacy global Kress q=4, ppw=20 or24 selected against the 1e-8 numerical-reference target.
+Beyn: nq=40, r=24, Rmax=.5, Taylor degree18; all acceptance thresholds retain defaults.
+CORK: default polynomial degree12, guard.05, block10, mstart500, mstep50, stable_checks1; Rmax=.5; all filters unchanged.
+Compilation warmups and resolution selection excluded from medians. Each timed trial builds fresh points/cache and retains vectors.
+Preparation: fresh kernel/solver, density mesh and symmetry size. Solve: source-rule preparation, matrix/polynomial construction, factorization, root extraction and unchanged solver checks.
+One public solve_vectors call per contour, including returned vectors. Beyn residuals are direct Fredholm norms; CORK residuals are projected inverse-linearization indicators, not comparable norms.
+Julia 1.11.9; Julia threads 8; initial BLAS threads 12; LAPACK macro budget 12
+BLAS LBTConfig([ILP64] libopenblas64_.dylib); timing isolated true; smoke false; requested repetitions 5
+QuantumBilliards source signature: ec5b9ecbb8be4978edb34f72fd2704405a121d6279fcb570bb8ae4e2aa610e9b
+Geometry source: /tmp/quantumbilliards-density-BilliardGeometry/src/BilliardGeometry.jl
+Reference parity -1: /tmp/quantumbilliards-density-results/weighted_final/weighted_k100.0_ppw30.0_parity-1_sources2.jls; reference source signature e7576b051507ccd6864a44c991798138fde8eec2068467b672c2b4081c8140bb
+Reference parity 1: /tmp/quantumbilliards-density-results/weighted_final/weighted_k100.0_ppw30.0_parity1_sources2.jls; reference source signature e7576b051507ccd6864a44c991798138fde8eec2068467b672c2b4081c8140bb

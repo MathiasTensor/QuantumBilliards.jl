@@ -1,5 +1,9 @@
 # Mushroom convergence and runtime
 
+The later [optimization and independent angle checks](weighted_corner_optimization.md)
+compare this committed weighted implementation with faster source preparation
+and matrix assembly. The tables below retain the original release measurements.
+
 These measurements use the existing
 `BilliardGeometry.MushroomBilliard(0.4,1.0; R=1.0)`: cap radius 1, full stem
 width 0.8 and height 1, with Dirichlet boundary conditions. Both reflection

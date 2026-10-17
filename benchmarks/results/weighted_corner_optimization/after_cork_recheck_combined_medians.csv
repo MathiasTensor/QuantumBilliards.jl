@@ -1,0 +1,2 @@
+method,kind,ppw,parities,repetitions,status,nodes_per_full_boundary,matrix_dimension_per_sector,reference_states,median_preparation_seconds,median_solve_seconds,median_total_seconds,timing_isolated
+cork,weighted,10.0,2,5,complete,1176,588,15,0.001438792,2.484855124,2.486330625,true

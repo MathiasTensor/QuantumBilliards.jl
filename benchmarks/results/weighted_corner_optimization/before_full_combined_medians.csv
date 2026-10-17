@@ -1,0 +1,3 @@
+method,kind,ppw,parities,repetitions,status,nodes_per_full_boundary,matrix_dimension_per_sector,reference_states,median_preparation_seconds,median_solve_seconds,median_total_seconds,timing_isolated
+beyn,weighted,10.0,2,3,complete,1176,588,15,0.0014576670000000002,7.699127667000001,7.700619250000001,true
+cork,weighted,10.0,2,3,complete,1176,588,15,0.0018529170000000001,3.107444125,3.109332,true

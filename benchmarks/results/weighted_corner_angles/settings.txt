@@ -1,0 +1,17 @@
+Independent circular-sector Dirichlet spectrum; radius R=1.
+Origin angle alpha; the two radial/arc joins have angle pi/2.
+Exact k=j_(m*pi/alpha,n), with every m,n in the contour retained.
+Contour center j_(pi/alpha,9), diameter=0.4; nq=40; fixed Taylor degree=18; default direct nonlinear-residual and rank filters remain enabled.
+Requested ppw=[6.0, 8.0, 10.0, 12.0, 15.0, 18.0, 24.0]; kinds=[:weighted, :legacy_q4]; source audit=true
+Weighted corner panel floors can exceed requested ppw; actual node counts/ppw are recorded.
+No real-axis projection or deduplication; count mismatches are failures.
+Bessel reference sign scans step 0.05 and 0.025 agree; Float64 bisection.
+Julia=1.11.9; threads=8; BLAS=LBTConfig([ILP64] libopenblas64_.dylib); initial BLAS threads=12; timing isolated=false
+QuantumBilliards=/Users/matic/Desktop/QuantumChaosJulia/QuantumBilliards-migrate_solvers_density_weigths/src/QuantumBilliards.jl; BilliardGeometry=/tmp/quantumbilliards-density-BilliardGeometry/src/BilliardGeometry.jl
+Source signature=858ec6e1bd5419f3a06d267d29d8ad1cd37f8763d31765cb8005ae056998ad35
+Random seed per case=24301+1000*numerator+100*denominator+round(ppw).
+The scalar solve_vectors API retains degree 18; automatic degree tuning belongs to the multi-window API.
+Beyn scalar probing retains the built-in MersenneTwister(0); the recorded per-case seed fixes the global RNG as well.
+Angle wall times are not performance benchmarks: runs overlapped validation and were temporarily paused for isolated timing jobs.
+All 105 raw root sets are bit-for-bit identical to the earlier optimized run before shared complex-Hankel evaluation.
+BilliardGeometry revision=423daff43f7ab4dd55f5ae411db40bf4ef3929b9
