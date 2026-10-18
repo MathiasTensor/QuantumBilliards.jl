@@ -299,6 +299,7 @@ end
 # actual reparametrization. This flag is passed to the geometry-cache
 # construction so that the Kress kernel splitting uses the appropriate geometry.
 @inline function _is_nontrivial_dlp_grading(pts::BoundaryPoints{T}) where {T<:Real}
+    pts.density_space === nothing || throw(ArgumentError("Weighted boundary points require a solver configured with WeightedCornerGrading"))
     length(pts.ws_der) == length(pts) || return false
     return maximum(abs.(pts.ws_der .- one(T))) > sqrt(eps(T))
 end

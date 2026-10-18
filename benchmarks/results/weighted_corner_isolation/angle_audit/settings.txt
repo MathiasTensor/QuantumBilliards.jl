@@ -1,0 +1,12 @@
+Independent circular-sector Dirichlet spectrum; radius R=1.
+Origin angle alpha; the two radial/arc joins have angle pi/2.
+Exact k=j_(m*pi/alpha,n), with every m,n in the contour retained.
+Contour center j_(pi/alpha,9), diameter=0.4; nq=40; fixed Taylor degree=18; rank/residual acceptance retains defaults; this scalar solve does not auto-tune the Taylor degree.
+Requested ppw=[12.0, 24.0]; kinds=[:weighted, :legacy_q4]; source audit=true
+Weighted corner panel floors can exceed requested ppw; actual node counts/ppw are recorded.
+No real-axis projection or deduplication; count mismatches are failures.
+Bessel reference sign scans step 0.05 and 0.025 agree; Float64 bisection.
+Julia=1.11.9; threads=8; BLAS=LBTConfig([ILP64] libopenblas64_.dylib); initial BLAS threads=12; timing isolated=false
+QuantumBilliards=/Users/matic/Desktop/QuantumChaosJulia/QuantumBilliards-migrate_solvers_density_weigths/src/QuantumBilliards.jl; BilliardGeometry=/tmp/quantumbilliards-density-BilliardGeometry/src/BilliardGeometry.jl
+Source signature=e455eecbdcf83a156c387ae68000fea3b9123d945ba548c089ea5eeccb08cb2c
+Random seed per case=24301+1000*numerator+100*denominator+round(ppw).

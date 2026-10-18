@@ -272,8 +272,6 @@ end
 # BOUNDARYPOINTS API
 ################################################################################
 
-
-
 """
     husimi_function(k::T, pts::BoundaryPoints{T}, u::AbstractVector{Num}; c::Real=10.0, w::Real=7.0, full_p::Bool=false) where {T<:Real,Num<:Number}
 

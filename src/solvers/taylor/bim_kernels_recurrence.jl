@@ -500,7 +500,7 @@ end
 function _construct_matrices_multi_k_taylor_reduced(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k0::Float64, ks::AbstractVector{<:Number}, p::Int; multithreaded::Bool = true)::Vector{Matrix{ComplexF64}}
     solver.symmetry === nothing && throw(ArgumentError("reduced Taylor construction requires an active symmetry"))
     cache = _taylor_cache(solver, pts)
-    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, pts, solver.symmetry, solver.sym_characters)
+    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, length(pts.xy), solver.symmetry, solver.sym_characters)
     m::Int = fundamental_size(orbits)
     fund = orbits.fundamental_indices
     orbit_of = orbits.orbit_of
@@ -574,16 +574,6 @@ selected automatically.
 - `::Vector{Matrix{ComplexF64}}`: Fredholm matrices evaluated at the requested wavenumbers.
 """
 function _construct_matrices_multi_k_taylor(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k0::Float64, ks::AbstractVector{<:Number}, p::Int; multithreaded::Bool = true)::Vector{Matrix{ComplexF64}}
-    if pts.density_space !== nothing
-        coefficients = _weighted_corner_matrices(solver, pts, k0, p; multithreaded)
-        values = [similar(first(coefficients)) for _ in ks]
-        @use_threads multithreading=multithreaded for q in eachindex(ks)
-            @inbounds for entry in eachindex(values[q])
-                values[q][entry] = _horner(coefficients, entry, ks[q]-k0)
-            end
-        end
-        return values
-    end
     if solver.symmetry === nothing
         return _construct_matrices_multi_k_taylor_full(solver, pts, k0, ks, p; multithreaded)
     end
@@ -668,7 +658,7 @@ end
 function _construct_matrices_multi_k_taylor_derivatives_reduced(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k0::Float64, ks::AbstractVector{<:Real}, p::Int; multithreaded::Bool = true)
     solver.symmetry === nothing && throw(ArgumentError("reduced Taylor construction requires an active symmetry"))
     cache = _taylor_cache(solver, pts)
-    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, pts, solver.symmetry, solver.sym_characters)
+    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, length(pts.xy), solver.symmetry, solver.sym_characters)
     m::Int = fundamental_size(orbits)
     fund = orbits.fundamental_indices
     orbit_of = orbits.orbit_of
@@ -749,19 +739,6 @@ selected automatically.
 - `ddAbufs::Vector{Matrix{ComplexF64}}`: Second derivatives `A''(ks[q])`.
 """
 function _construct_matrices_multi_k_taylor_derivatives(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k0::Float64, ks::AbstractVector{<:Real}, p::Int; multithreaded::Bool = true)
-    if pts.density_space !== nothing
-        coefficients = _weighted_corner_matrices(solver, pts, k0, p; multithreaded)
-        values = [similar(first(coefficients)) for _ in ks]
-        firsts = [similar(first(coefficients)) for _ in ks]
-        seconds = [similar(first(coefficients)) for _ in ks]
-        @use_threads multithreading=multithreaded for q in eachindex(ks)
-            @inbounds for entry in eachindex(values[q])
-                values[q][entry], firsts[q][entry], seconds[q][entry] =
-                    _horner_with_12_derivatives(coefficients, entry, ks[q]-k0)
-            end
-        end
-        return values, firsts, seconds
-    end
     if solver.symmetry === nothing
         return _construct_matrices_multi_k_taylor_derivatives_full(solver, pts, k0, ks, p; multithreaded)
     end

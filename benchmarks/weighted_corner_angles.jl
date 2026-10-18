@@ -262,7 +262,7 @@ open(joinpath(ANGLE_OUTPUT,"settings.txt"),"w") do io
     println(io,"Origin angle alpha; the two radial/arc joins have angle pi/2.")
     println(io,"Exact k=j_(m*pi/alpha,n), with every m,n in the contour retained.")
     println(io,"Contour center j_(pi/alpha,9), diameter=",ANGLE_DIAMETER,"; nq=",ANGLE_NQ,
-        "; initial Taylor degree=",ANGLE_TAYLOR_DEGREE,"; all automatic validation remains enabled.")
+        "; fixed Taylor degree=",ANGLE_TAYLOR_DEGREE,"; rank/residual acceptance retains defaults; this scalar solve does not auto-tune the Taylor degree.")
     println(io,"Requested ppw=",ANGLE_PPWS,"; kinds=",ANGLE_KINDS,"; source audit=",ANGLE_SOURCE_AUDIT)
     println(io,"Weighted corner panel floors can exceed requested ppw; actual node counts/ppw are recorded.")
     println(io,"No real-axis projection or deduplication; count mismatches are failures.")

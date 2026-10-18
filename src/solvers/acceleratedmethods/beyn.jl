@@ -196,7 +196,6 @@ function tune_cheb_config(cs::DoubleLayerPotentialSolver, pts::BoundaryPoints, k
 end
 
 function tune_cheb_config(cs::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints, k, cfg::ChebyshevConfig)
-    pts.density_space === nothing || return cfg
     z = ComplexF64[ComplexF64(k)]; G = boundary_geom_cache(pts, _is_nontrivial_dlp_grading(pts))
     rmin, rmax = _cheb_geom_rminmax(G, z)
     _, _, _, _, tuned = tune_cfie_cheb_plans(rmin, rmax, z, cfg)
@@ -212,7 +211,7 @@ function _construct_matrices_multi_k_cheb(cs::DoubleLayerPotentialSolver, pts::B
         Tbufs = [Matrix{ComplexF64}(undef, N, N) for _ in zj]
         _dlp_fredholm_full_multi_k_cheb!(Tbufs, pts, Rmat, G, C, zj, plans1, plansj1; multithreaded)
     else
-        orbits = _fold_boundary(T, cs.billiard, pts, cs.symmetry, cs.sym_characters); M = fundamental_size(orbits)
+        orbits = _fold_boundary(T, cs.billiard, N, cs.symmetry, cs.sym_characters); M = fundamental_size(orbits)
         Tbufs = [Matrix{ComplexF64}(undef, M, M) for _ in zj]
         _dlp_fredholm_reduced_multi_k_cheb!(Tbufs, pts, Rmat, G, C, orbits, zj, plans1, plansj1; multithreaded)
     end
@@ -220,9 +219,6 @@ function _construct_matrices_multi_k_cheb(cs::DoubleLayerPotentialSolver, pts::B
 end
 
 function _construct_matrices_multi_k_cheb(cs::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints{T}, zj::Vector{ComplexF64}, cfg::ChebyshevConfig; multithreaded::Bool = true) where {T<:Real}
-    # Weighted panels own their local product quadrature; the periodic Kress
-    # lookup is inapplicable. Direct kernels retain identical accuracy here.
-    pts.density_space === nothing || return [construct_matrices(cs, pts, z; multithreaded) for z in zj]
     T === Float64 || error("Chebyshev-accelerated Beyn evaluation requires Float64")
     N = length(pts); graded = _is_nontrivial_dlp_grading(pts); G = boundary_geom_cache(pts, graded); Rmat = zeros(T, N, N); kress_R!(Rmat)
     rmin, rmax = _cheb_geom_rminmax(G, zj); plans0, plans1, plansj0, plansj1, _ = tune_cfie_cheb_plans(rmin, rmax, zj, cfg)
@@ -231,7 +227,7 @@ function _construct_matrices_multi_k_cheb(cs::CombinedFieldIntegralEquationSolve
         Tbufs = [Matrix{ComplexF64}(undef, N, N) for _ in zj]
         _cfie_fredholm_full_multi_k_cheb!(Tbufs, pts, Rmat, G, C, zj, plans0, plans1, plansj0, plansj1; multithreaded)
     else
-        orbits = _fold_boundary(T, cs.billiard, pts, cs.symmetry, cs.sym_characters); M = fundamental_size(orbits)
+        orbits = _fold_boundary(T, cs.billiard, N, cs.symmetry, cs.sym_characters); M = fundamental_size(orbits)
         Tbufs = [Matrix{ComplexF64}(undef, M, M) for _ in zj]
         _cfie_fredholm_reduced_multi_k_cheb!(Tbufs, pts, Rmat, G, C, orbits, zj, plans0, plans1, plansj0, plansj1; multithreaded)
     end

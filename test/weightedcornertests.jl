@@ -42,6 +42,49 @@ const WCT_QB = QuantumBilliards
     end
 end
 
+@testset "Weighted integration dispatch and representation guards" begin
+    # A solver's grading selects its density representation. A weighted
+    # physical q mesh must never enter a periodic combined-layer mu formula.
+    @test isempty(Test.detect_ambiguities(WCT_QB;recursive=false))
+    billiard = CircleBilliard(1.0)
+    periodic = CombinedFieldIntegralEquationSolver(8.0,billiard;min_pts=64)
+    weighted = CombinedFieldIntegralEquationSolver(8.0,billiard;
+        min_pts=64,grading=WeightedCornerGrading())
+    ordinary_points = evaluate_points(periodic,billiard,4.0)
+    weighted_points = evaluate_points(weighted,billiard,4.0)
+    @test_throws ArgumentError boundary_matrix_size(periodic,weighted_points)
+    @test_throws ArgumentError construct_matrices(periodic,weighted_points,4.0;
+        multithreaded=false)
+    @test_throws ArgumentError construct_matrices(weighted,ordinary_points,4.0;
+        multithreaded=false)
+    @test_throws ArgumentError WCT_QB._construct_matrices_multi_k_taylor(periodic,
+        weighted_points,4.0,ComplexF64[4.01+0.02im],4;multithreaded=false)
+    @test_throws ArgumentError WCT_QB.build_cork_polynomial(periodic,
+        weighted_points,4.0,0.15,4;multithreaded=false)
+    @test_throws ArgumentError WCT_QB._ebim_construct_matrices(periodic,
+        weighted_points,4.0;multithreaded=false)
+
+    # These optional accelerators must dispatch to the same physical operator,
+    # without edits to the original periodic Chebyshev/Taylor implementations.
+    config = ChebyshevConfig(Float64)
+    @test WCT_QB.tune_cheb_config(weighted,weighted_points,4.0,config) === config
+    z = 4.01+0.02im
+    direct = construct_matrices(weighted,weighted_points,z;multithreaded=false)
+    from_chebyshev_api = only(WCT_QB._construct_matrices_multi_k_cheb(weighted,
+        weighted_points,ComplexF64[z],config;multithreaded=false))
+    @test norm(from_chebyshev_api-direct)/norm(direct) < 3e-13
+    expanded = ExpandedBIMSolver(weighted;use_taylor=true)
+    cache = WCT_QB.EBIMTaylorCache(weighted,weighted_points,4.0,4;
+        multithreaded=false)
+    cached = construct_matrices(expanded,cache,4.0)
+    coefficients = WCT_QB._weighted_corner_matrices(weighted,weighted_points,4.0,2;
+        multithreaded=false)
+    for (observed,expected) in zip(cached,
+        (coefficients[1],coefficients[2],2coefficients[3]))
+        @test norm(observed-expected)/norm(expected) < 3e-13
+    end
+end
+
 @testset "Weighted corner quadrature moments" begin
     for exponent in (-1/3, 0.0, 1.0, 2.5)
         x, w = WCT_QB._weighted_corner_gauss_rule(16, exponent)

@@ -1,7 +1,9 @@
 # Weighted-density optimization and angle convergence
 
-The optimization changes only `src/solvers/weighted_corner_assembly.jl` in
-production code. The original grading policies and solver algorithms are
+The first optimization, committed as `f4124ce4`, changed only
+`src/solvers/weighted_corner_assembly.jl` in production code. Its measurements
+and angle figures are preserved below. The later isolation and optimization
+pass is described at the end of this page. The original grading policies and solver algorithms are
 unchanged. It keeps the same physical normal density, Gaussian orders,
 logarithmic product integration, automatic subdivision, close-corner geometry
 and eigenvalue acceptance checks. The [density derivation](weighted_corners.md)
@@ -263,3 +265,100 @@ Final validation passes **315 weighted checks**, **276 existing all-geometry
 checks** and **117 boundary/symmetry checks**: **708 distinct checks** in total.
 The original full test entry point's two stale baseline API tests remain as
 described in the earlier feature results; they were not changed by this work.
+
+
+## Further optimization and isolation of the feature
+
+A second pass compares with the already optimized `f4124ce4` snapshot.
+Its main structural change reduces the edits needed in the original library:
+**8 existing source files are modified instead of 16**, with **84 added lines
+instead of 489** in those files (83% fewer). This count is relative to the
+original `migrate_solvers` base `3c41a3e9`; it excludes newly added feature
+files. Total feature code is not reduced by the same amount: specialized
+methods and their documentation are now kept together instead of being
+scattered through the original algorithms.
+
+Beyn, CORK, expanded BIM, shared Taylor recurrence/evaluation, boundary-grading
+and eigenstate-definition files are restored byte for byte to their original
+versions. The feature uses the same function names through dispatch on the
+existing CFIE solver's grading type. Its ownership is explicit:
+
+| Feature file | Responsibility |
+|---|---|
+| `weighted_corner_types.jl` | Owned interpolation and source-rule records |
+| `weighted_corner_geometry.jl` | Defaults, angle detection and density nodes |
+| `weighted_corner_assembly.jl` | Physical-density kernels and local integration |
+| `weighted_corner_integration.jl` | Specialized methods for the existing spectral solvers |
+| `weighted_corner_states.jl` | Physical source projections and batch reconstruction |
+
+The remaining original-file edits provide includes/export, optional boundary
+metadata, representation guards and small physical-density state hooks.
+A periodic-density solver paired with weighted points, or a weighted solver
+paired with ordinary points, is rejected explicitly. This prevents silently
+mixing the primal combined-layer unknown with the physical derivative
+``q=\partial_n\psi``. Contour extraction, root filters, integration orders,
+near-target refinement and selected-state LAPACK SVD remain unchanged.
+
+For real ``k`` and ``r``, Hankel and Bessel functions satisfy
+
+```math
+H_n^{(1)}(kr)=J_n(kr)+iY_n(kr),\qquad
+\frac{1}{\ell!}\partial_k^\ell[kJ_n(kr)]
+=\Re\!\left(\frac{1}{\ell!}\partial_k^\ell[kH_n^{(1)}(kr)]\right).
+```
+
+The real-argument matrix builder therefore reads the already computed real
+Hankel coefficients when packing its logarithmic correction. It skips the
+redundant Bessel recurrence and buffer copies. Complex direct evaluations keep
+their independent Bessel evaluation. The robust second-order radial recurrences
+are retained: a tested coupled alternative lost accuracy at very small
+separations and was rejected.
+
+Line and circle charts also have constant parameter speed, so their partial
+arc length is exactly ``s(u)=uL``. This replaces numerical integration only
+for those charts; generic charts retain adaptive integration. Endpoint values
+are reused outside node loops, and boundary projections preallocate their
+output arrays and use `mul!` for cardinal contractions.
+
+Isolated warmed medians on the same mushroom near ``k=100`` are:
+
+| Operation | Before | After | Reduction |
+|---|---:|---:|---:|
+| Density mesh | 0.470 ms | 0.358 ms | 24% |
+| Boundary source projection | 0.985 ms | 0.410 ms | 58% |
+| Taylor-18 assembly, one sector | 103.1 ms | 99.7 ms | 3.4% |
+| Full Beyn, both sectors | 5.556 s | 5.655 s | No demonstrated improvement |
+| Full CORK, both sectors | 2.553 s | 2.544 s | No demonstrated improvement |
+
+Mesh/projection rows use eleven repetitions; matrix/full-solve rows use five.
+Both full solves recover all 15 reference states, retaining their vectors,
+with a fresh mesh and source cache each time. Beyn still uses 40 contour
+nodes. The full solves are effectively unchanged at this scale: the small
+assembly/setup savings do not establish an additional end-to-end gain over
+the first optimization. No reduction in accuracy or validation was used to
+obtain the local speedups.
+
+Every one of the 19 Taylor coefficient matrices and the complex direct matrix
+is **bitwise identical** to the snapshot. Physical source amplitudes and norm
+weights are unchanged. Arc coordinates change by at most ``8.9\times10^{-16}``;
+momentum and prescribed-grid Husimi projections differ relatively by less
+than ``2\times10^{-16}``.
+
+The final 35-case angle subset covers all seven angles at ppw 12 and 24,
+including seven doubled-source audits. All 21 weighted cases recover every
+exact root. All returned roots and counts, including the explicitly reported
+legacy count failure, are identical to the previous convergence dataset.
+These runs use fixed Taylor degree 18; default rank/direct-residual acceptance
+is retained, but this scalar API does not exercise automatic degree selection.
+The maximum weighted complex error at ppw 24 remains ``1.22\times10^{-13}``.
+
+Current regression validation passes **327 weighted**, **276 existing fast
+geometry/solver**, **110 boundary** and **7 symmetry** checks: **720 checks**
+with zero failures and no detected method ambiguities. Existing baseline
+exclusions in the fast suite are unchanged.
+
+The new projection benchmark is `benchmarks/weighted_corner_postprocessing.jl`.
+Raw measurements, complete complex roots, settings and reproduction details
+are archived in `benchmarks/results/weighted_corner_isolation`. The earlier
+full convergence plots above remain valid; the final subset checks their
+numerical results after the code has been reorganized.

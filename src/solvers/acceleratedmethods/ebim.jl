@@ -470,7 +470,7 @@ function _ebim_construct_matrices(cs::DoubleLayerPotentialSolver, pts::BoundaryP
         _ebim_fredholm_full_with_derivatives!(_dlp_kernel_entry_with_derivatives, A, dA, ddA, pts, Rmat, G, kT; multithreaded)
         return A, dA, ddA
     end
-    orbits = _fold_boundary(T, cs.billiard, pts, cs.symmetry, cs.sym_characters)
+    orbits = _fold_boundary(T, cs.billiard, N, cs.symmetry, cs.sym_characters)
     m = fundamental_size(orbits)
     A = Matrix{Complex{T}}(undef, m, m)
     dA = similar(A)
@@ -480,10 +480,6 @@ function _ebim_construct_matrices(cs::DoubleLayerPotentialSolver, pts::BoundaryP
 end
 
 function _ebim_construct_matrices(cs::CombinedFieldIntegralEquationSolver, pts::BoundaryPoints{T}, k; multithreaded::Bool=true) where {T<:Real}
-    if pts.density_space !== nothing
-        coefficients = _weighted_corner_matrices(cs, pts, k, 2; multithreaded)
-        return coefficients[1], coefficients[2], 2coefficients[3]
-    end
     kT = _bim_widen_k(T, k)
     N = length(pts)
     graded = _is_nontrivial_dlp_grading(pts)
@@ -497,7 +493,7 @@ function _ebim_construct_matrices(cs::CombinedFieldIntegralEquationSolver, pts::
         _ebim_fredholm_full_with_derivatives!(_cfie_kernel_entry_with_derivatives, A, dA, ddA, pts, Rmat, G, kT; multithreaded)
         return A, dA, ddA
     end
-    orbits = _fold_boundary(T, cs.billiard, pts, cs.symmetry, cs.sym_characters)
+    orbits = _fold_boundary(T, cs.billiard, N, cs.symmetry, cs.sym_characters)
     m = fundamental_size(orbits)
     A = Matrix{Complex{T}}(undef, m, m)
     dA = similar(A)
@@ -605,10 +601,6 @@ panel construction.
 """
 function EBIMTaylorCache(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k0::Float64, p::Int; multithreaded::Bool = true)::EBIMTaylorCache
     p >= 2 || throw(ArgumentError("EBIM Taylor degree must be at least 2"))
-    if pts.density_space !== nothing
-        matrices = _weighted_corner_matrices(solver, pts, k0, p; multithreaded)
-        return EBIMTaylorCache(k0, p, cat(matrices...; dims=3))
-    end
     cache = _taylor_cache(solver, pts)
     if solver.symmetry === nothing
         N = length(pts)
@@ -625,7 +617,7 @@ function EBIMTaylorCache(solver::SweepBIMSolver, pts::BoundaryPoints{Float64}, k
         end
         return EBIMTaylorCache(k0, p, coeffs)
     end
-    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, pts, solver.symmetry, solver.sym_characters)
+    orbits = solver isa CompositeBIMSolver ? _composite_symmetry_orbits(Float64, solver, pts) : _fold_boundary(Float64, solver.billiard, length(pts.xy), solver.symmetry, solver.sym_characters)
     m = fundamental_size(orbits)
     fund = orbits.fundamental_indices
     orbit_of = orbits.orbit_of

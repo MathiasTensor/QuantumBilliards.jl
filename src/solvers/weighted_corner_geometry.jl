@@ -39,9 +39,23 @@
 # integer permutations of a uniform Kress grid do not apply to this mesh.
 ################################################################################
 
+# WEIGHTED-CORNER STARTING RULES
+# These are initial resolution choices, not acceptance tolerances. Density and
+# source integration are checked independently; increasing source counts does
+# not add unknowns. Explicit constructor keywords allow convergence studies.
+const WEIGHTED_CORNER_DEFAULTS = (;
+    regular_density_nodes=12,       # Degree 11 on smooth spans; practical 8-24, supported 4-32.
+    corner_density_nodes=16,        # Degree 15 for the regular corner amplitude; practical 12-24, supported 4-32.
+    corner_subpanels=2,             # Two computational cells resolve remaining power/log terms; practical/supported 1-4.
+    regular_integration_nodes=32,   # Independent kernel sources, not density unknowns; practical 24-64, supported >= density nodes.
+    corner_integration_nodes=96,    # Resolves self logarithms after the power map; practical 64-160, supported >= corner density nodes.
+    corner_angle_tolerance=1e-8,    # Radians: roundoff-sized tangent joins count as smooth; practical 1e-10-1e-6, supported (0,0.1).
+    minimum_tangent_ratio=1e-12,    # Endpoint speed relative to midpoint speed; detects cusps, practical 1e-14-1e-8, supported (0,1).
+)
+
 # Geometry-only policies. These are derived roundoff guards and bounded starting
 # choices, not requested spectral accuracy. Node/source defaults belong to the
-# public WeightedCornerGrading constructor in sweepmethods/boundarygrading.jl.
+# public WeightedCornerGrading constructor below.
 const WEIGHTED_CORNER_GEOMETRY_DEFAULTS = (;
     minimum_panels_per_curve=2,  # Keeps left/right endpoint spans separate; practical 2-4.
     reentrant_source_power=2,    # pλ=2 makes q ds linear; practical 1-3, 2 keeps 2<p<4.
@@ -52,6 +66,89 @@ const WEIGHTED_CORNER_GEOMETRY_DEFAULTS = (;
     symmetry_roundoff_factor=512, # eps times geometry scale for node images; practical 128-2048.
     normal_roundoff_factor=4096, # eps-scaled unit-normal check after symmetry; practical 1024-16384.
 )
+
+"""
+    WeightedCornerGrading{T<:Real} <: BoundaryGrading
+
+Local Gaussian panels for the physical boundary normal derivative
+`q=∂ₙψ`, with automatic angle-dependent corner coordinates. This opt-in policy
+selects the adjoint CFIE density formulation. Existing Kress policies retain
+their original combined-layer density and discretization.
+
+In a Dirichlet wedge with interior angle `α`, separation of variables gives
+`ψ∼r^(π/α) sin(πθ/α)` and therefore `q∼r^(λ-1)`, `λ=π/α`. On an endpoint
+span use `r∝ξ^p` and interpolate the bounded amplitude `v=q/ξ^(p*(λ-1))`.
+For a reentrant corner `p=2/λ`, so `q ds∝ξ*v dξ`; for a convex corner
+`p=ceil(3λ)/λ`, which keeps the mapped geometry regular. These leading-power
+rules do not remove all higher powers or logarithmic terms.
+
+`regular_density_nodes` and `corner_density_nodes` count unknowns per panel.
+Integration nodes are independent kernel samples and do not enlarge the
+matrix. The complete original boundary is retained, including smooth joins;
+transparent interfaces and symmetry walls are excluded by `full_boundary`.
+
+## Attributes
+* `regular_density_nodes::Int`: Nodal polynomial order on ordinary spans.
+* `corner_density_nodes::Int`: Nodal amplitude order on mapped endpoint cells.
+* `corner_subpanels::Int`: Computational cells per physical endpoint span.
+* `regular_integration_nodes::Int`: Minimum ordinary Gaussian source count.
+* `corner_integration_nodes::Int`: Minimum source count retained by corner cells.
+* `corner_angle_tolerance::T`: Radian tolerance for a smooth tangent join.
+* `minimum_tangent_ratio::T`: Smallest endpoint/midpoint tangent-speed ratio.
+"""
+struct WeightedCornerGrading{T<:Real} <: BoundaryGrading
+    regular_density_nodes::Int
+    corner_density_nodes::Int
+    corner_subpanels::Int
+    regular_integration_nodes::Int
+    corner_integration_nodes::Int
+    corner_angle_tolerance::T
+    minimum_tangent_ratio::T
+end
+
+"""
+    WeightedCornerGrading(; regular_density_nodes::Int=12,
+        corner_density_nodes::Int=16, corner_subpanels::Int=2,
+        regular_integration_nodes::Int=32, corner_integration_nodes::Int=96,
+        corner_angle_tolerance::Real=1e-8, minimum_tangent_ratio::Real=1e-12)
+        → grading::WeightedCornerGrading
+
+Construct the automatic weighted-corner starting space. Defaults and realistic
+study ranges are declared in `WEIGHTED_CORNER_DEFAULTS` at the top of this
+file. No angle, wedge exponent, or coordinate power is guessed by the caller.
+
+## Keyword arguments
+* `regular_density_nodes::Int=12`: Ordinary panel unknown count, in `4:32`.
+* `corner_density_nodes::Int=16`: Corner amplitude unknown count, in `4:32`.
+* `corner_subpanels::Int=2`: Endpoint computational subdivision, in `1:4`.
+* `regular_integration_nodes::Int=32`: Ordinary source count, at least the ordinary density count.
+* `corner_integration_nodes::Int=96`: Corner source count, at least the corner density count.
+* `corner_angle_tolerance::Real=1e-8`: Smooth-join tolerance in radians, in `(0,0.1)`.
+* `minimum_tangent_ratio::Real=1e-12`: Scale-independent cusp screen, in `(0,1)`.
+
+## Returns
+* `grading::WeightedCornerGrading`: Immutable geometry and starting-resolution policy.
+"""
+function WeightedCornerGrading(;
+    regular_density_nodes::Int=WEIGHTED_CORNER_DEFAULTS.regular_density_nodes,
+    corner_density_nodes::Int=WEIGHTED_CORNER_DEFAULTS.corner_density_nodes,
+    corner_subpanels::Int=WEIGHTED_CORNER_DEFAULTS.corner_subpanels,
+    regular_integration_nodes::Int=WEIGHTED_CORNER_DEFAULTS.regular_integration_nodes,
+    corner_integration_nodes::Int=WEIGHTED_CORNER_DEFAULTS.corner_integration_nodes,
+    corner_angle_tolerance::Real=WEIGHTED_CORNER_DEFAULTS.corner_angle_tolerance,
+    minimum_tangent_ratio::Real=WEIGHTED_CORNER_DEFAULTS.minimum_tangent_ratio)
+    4 <= regular_density_nodes <= 32 || throw(ArgumentError("regular_density_nodes must be in 4:32"))
+    4 <= corner_density_nodes <= 32 || throw(ArgumentError("corner_density_nodes must be in 4:32"))
+    1 <= corner_subpanels <= 4 || throw(ArgumentError("corner_subpanels must be in 1:4"))
+    regular_integration_nodes >= regular_density_nodes || throw(ArgumentError("ordinary integration must have at least regular_density_nodes samples"))
+    corner_integration_nodes >= corner_density_nodes || throw(ArgumentError("corner integration must have at least corner_density_nodes samples"))
+    isfinite(corner_angle_tolerance) && 0 < corner_angle_tolerance < 0.1 || throw(ArgumentError("corner_angle_tolerance must be finite and in (0,0.1)"))
+    isfinite(minimum_tangent_ratio) && 0 < minimum_tangent_ratio < 1 || throw(ArgumentError("minimum_tangent_ratio must be finite and in (0,1)"))
+    T = promote_type(typeof(float(corner_angle_tolerance)), typeof(float(minimum_tangent_ratio)))
+    return WeightedCornerGrading{T}(regular_density_nodes, corner_density_nodes,
+        corner_subpanels, regular_integration_nodes, corner_integration_nodes,
+        T(corner_angle_tolerance), T(minimum_tangent_ratio))
+end
 
 """
     _weighted_panel_geometry(curve::C, panel::WeightedDensityPanel{T}, t::T)
@@ -107,6 +204,20 @@ strictly interior samples, so a divergent corner endpoint is never evaluated.
     return values
 end
 
+"""
+    _weighted_corner_arc_length(curve::AbsCurve, u::T) -> s::T
+
+Return physical arc length from native parameter zero to `u`. Lines and circular
+arcs have constant speed `|γ′|=curve.length`, so their integral is exactly
+`s=u*curve.length` and needs no numerical quadrature. Other smooth charts keep
+BilliardGeometry's adaptive integral with relative tolerance `64eps(T)`; no
+geometric approximation or interpolation is introduced. The input is unchanged.
+"""
+@inline _weighted_corner_arc_length(curve::BilliardGeometry.AbsCurve,u::T) where {T<:Real} =
+    T(BilliardGeometry.arc_length(curve,u;rtol=T(64)*eps(T)))
+@inline _weighted_corner_arc_length(curve::Union{BilliardGeometry.AbsLine,BilliardGeometry.CircleSegment},u::T) where {T<:Real} =
+    u*T(curve.length)
+
 # A function barrier keeps heterogeneous original curve dispatch outside the
 # node loop. Every retained panel and source cardinal remains numerically typed.
 function _weighted_append_panel!(arrays, panels::Vector{WeightedDensityPanel{T}}, curve::C,
@@ -142,6 +253,8 @@ function _weighted_append_panel!(arrays, panels::Vector{WeightedDensityPanel{T}}
     indices = (length(arrays.xy)+1):(length(arrays.xy)+count)
     panel = WeightedDensityPanel(curve_index,left,right,tleft,tright,reverse,lambda,power,source_order,indices,nodes,barycentric,factors)
     panel_index = length(panels)+1
+    left_point = SVector{2,T}(BilliardGeometry.curve(curve,left))
+    right_point = SVector{2,T}(BilliardGeometry.curve(curve,right))
     @inbounds for j in eachindex(nodes)
         t = nodes[j]
         point,v,a = _weighted_panel_geometry(curve,panel,t)
@@ -151,14 +264,14 @@ function _weighted_append_panel!(arrays, panels::Vector{WeightedDensityPanel{T}}
         h = right-left; ξ = reverse ? one(T)-t : t
         u = reverse ? right-h*ξ^power : left+h*ξ^power
         all(isfinite,point) && all(isfinite,v) && isfinite(speed) && speed > zero(T) && isfinite(weight) && weight > zero(T) || throw(ArgumentError("weighted corner node or norm weight is unresolved"))
-        point != SVector{2,T}(BilliardGeometry.curve(curve,left)) && point != SVector{2,T}(BilliardGeometry.curve(curve,right)) || throw(ArgumentError("weighted corner point collapses onto a physical endpoint"))
+        point != left_point && point != right_point || throw(ArgumentError("weighted corner point collapses onto a physical endpoint"))
         isempty(arrays.xy) || point != last(arrays.xy) || throw(ArgumentError("weighted density nodes collapse in physical coordinates"))
         normal = SVector{2,T}(v[2]/speed,-v[1]/speed)
         push!(arrays.xy,point); push!(arrays.normal,normal)
         push!(arrays.tangent,v); push!(arrays.tangent_2,a)
         push!(arrays.ds,weight); push!(arrays.ws,weight/speed)
         push!(arrays.ws_der,h*power*ξ^(power-one(T)))
-        push!(arrays.s,s_offset+T(BilliardGeometry.arc_length(curve,u;rtol=T(64)*eps(T))))
+        push!(arrays.s,s_offset+_weighted_corner_arc_length(curve,u))
         push!(arrays.tphys,u); push!(arrays.ts,t)
         push!(arrays.node_panel,panel_index); push!(arrays.node_parameter,t)
     end

@@ -104,9 +104,10 @@ Lines and circles have exact versions; interactions across a shared vertex
 retain the small offsets from that vertex before adding any absolute position.
 This avoids magnifying geometric roundoff in the target-normal kernel.
 
-All starting choices and roundoff guards are named and documented at the tops
-of `boundarygrading.jl`, `weighted_corner_geometry.jl` and
-`weighted_corner_assembly.jl`. Normally only ppw is chosen by the user.
+All weighted starting choices and roundoff guards are named and documented at
+the tops of `weighted_corner_geometry.jl` and `weighted_corner_assembly.jl`.
+The original periodic grading implementation remains in `boundarygrading.jl`.
+Normally only ppw is chosen by the user.
 Integration counts can be increased independently through the policy constructor
 for convergence studies, without increasing the number of density unknowns.
 The actual node count includes complete panels and a corner minimum, so it can

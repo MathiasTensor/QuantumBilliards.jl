@@ -24,6 +24,7 @@ include("utils/macros.jl")
 export use_threads, blas_multi, blas_1, blas_multi_then_1, try_MKL!
 include("utils/billiardutils.jl")
 export make_triangle_and_basis, adapt_basis
+include("solvers/weighted_corner_types.jl")
 include("solvers/boundarypoints.jl")
 export BoundaryPoints
 export boundary_s, component_offsets, points_in_billiard
@@ -64,6 +65,7 @@ include("solvers/acceleratedmethods/verginisaraceno.jl")
 include("solvers/acceleratedmethods/ebim.jl")
 include("solvers/acceleratedmethods/beyn.jl")
 include("solvers/acceleratedmethods/cork.jl")
+include("solvers/weighted_corner_integration.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/chebyshev/optimalpanelization.jl")
 include("solvers/chebyshev/dlp.jl")
@@ -102,6 +104,7 @@ export apply_symmetries_to_wavefunction, apply_symmetries_to_boundary_function, 
 include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
+include("states/weighted_corner_states.jl")
 
 export wavefunction, compute_psi, boundary_limits #wavefunction_norm 
 export get_boundary_curves_with_ignored, boundary_function, momentum_function, husimi_function

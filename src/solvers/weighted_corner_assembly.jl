@@ -534,9 +534,11 @@ restricted. The resulting vector contains `degree+1` complex square matrices.
 - `Vector{Matrix{ComplexF64}}`: Coefficients in increasing powers of `k-k0`.
 """
 function _weighted_corner_matrices(solver,pts::BoundaryPoints{Float64},k0::Number,degree::Int;multithreaded::Bool=true,source_order::Int=0,reduce_symmetry::Bool=true)
+    pts.density_space===nothing && throw(ArgumentError("WeightedCornerGrading requires boundary points constructed with the same grading policy"))
     degree>=0 || throw(ArgumentError("Taylor degree must be nonnegative"))
     real(k0)>0 && (degree==0 || isreal(k0)) || throw(ArgumentError("weighted CFIE Taylor center must be positive and real"))
     k=degree==0 ? k0 : Float64(real(k0)); space=pts.density_space::WeightedDensitySpace{Float64}
+    real_argument=k isa Real
     N=length(pts)
     orbits=(!reduce_symmetry||solver.symmetry===nothing) ? nothing : _fold_boundary(Float64,solver.billiard,pts,solver.symmetry,solver.sym_characters)
     targets=orbits===nothing ? collect(1:N) : orbits.fundamental_indices
@@ -573,13 +575,15 @@ function _weighted_corner_matrices(solver,pts::BoundaryPoints{Float64},k0::Numbe
                         else
                             r=rule.distances[s]; projection=rule.normal_projections[s]
                         end
-                        _weighted_corner_radial!(w,k,r,degree,split,projection!=0)
+                        # At real k, H=J+iY and every real-linear Taylor
+                        # coefficient of J is already the real part of H.
+                        _weighted_corner_radial!(w,k,r,degree,split&&!real_argument,projection!=0)
                         @simd for l in 1:degree+1
                             value=-(im/2)*projection*w.H1[l]-w.H0[l]/2
                             kernel_coefficients[2l-1,s]=real(value)
                             kernel_coefficients[2l,s]=imag(value)
                             if split
-                                correction=(projection*w.J1[l]-im*w.J0[l])/pi
+                                correction=real_argument ? ComplexF64(projection*real(w.H1[l]),-real(w.H0[l]))/pi : (projection*w.J1[l]-im*w.J0[l])/pi
                                 logarithmic_coefficients[2l-1,s]=real(correction)
                                 logarithmic_coefficients[2l,s]=imag(correction)
                             end

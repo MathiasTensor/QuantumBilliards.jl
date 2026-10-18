@@ -308,15 +308,7 @@ function wavefunction(states::AbstractVector{<:BIMEigenstate{K,T}}, billiard::Ab
     bval = T(b)
     xgrid, ygrid, pts, indices, nx, ny = _wavefunction_grid(maximum(ks), billiard, bval; inside_only, fundamental_domain)
     if any(bd.density_space !== nothing for bd in bds)
-        all(bd.density_space !== nothing for bd in bds) || throw(ArgumentError("reconstruct weighted and periodic states in separate batches"))
-        # Both vec and u are physical normal densities on this discretization.
-        # Integrate their weighted cardinals, never periodic-grid Nyström weights.
-        Psi = [fill(use_NaN_mask && inside_only ? Complex{T}(NaN) : zero(Complex{T}), nx, ny) for _ in states]
-        targets = pts[indices]
-        for j in eachindex(states)
-            values = _weighted_corner_potential(bds[j], us[j], ks[j], targets)
-            Psi[j][indices] = values
-        end
+        Psi = _weighted_corner_wavefunctions(bds,us,ks,pts,indices,nx,ny;inside_only,use_NaN_mask)
     elseif density
         if use_chebyshev
             plans, ϕ = _density_kernel(kernel, ks, bds, xgrid, ygrid, cheb_config)

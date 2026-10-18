@@ -205,11 +205,7 @@ produced by the spectral solve. For example, [`BeynSolver`](@ref) and
 nullspace solve solely for constructing the state.
 
 When present, `vec` and `u` are associated with the boundary discretization
-stored in `pts`. For `WeightedCornerGrading`, `vec` stores the physical nodal
-normal derivative `q`, rather than the legacy CFIE combined-layer density.
-The owned `pts.density_space` identifies this representation and supplies its
-source interpolation for reconstruction. `u`, when available, is the same
-physical derivative after Rellich normalization.
+stored in `pts`.
 
 ## Attributes
 * `k::T`: Real part of the wavenumber of the eigenstate.

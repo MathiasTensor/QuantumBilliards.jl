@@ -158,13 +158,15 @@ Returns the Rellich-normalized boundary normal derivative \$u(s) = \\partial_n\\
 of a [`BIMEigenstate`](@ref), computed with any [`SweepBIMSolver`](@ref).
 
 ## Description
-Unlike [`boundary_function(state::S) where {S<:AbsState}`](@ref), `state.vec`
-(the *primal* density from [`solve_vect`](@ref)) is not directly usable as
-`∂ₙψ`. Since [`compute_eigenstate`](@ref) already computes the physical
+For legacy primal BIM states, unlike
+[`boundary_function(state::S) where {S<:AbsState}`](@ref), `state.vec` is not
+directly usable as `∂ₙψ`. Since [`compute_eigenstate`](@ref) already computes the physical
 boundary normal derivative via [`solve_state`](@ref)/[`_bim_normal_derivative`](@ref)
 (from the *same* Krylov solve as `vec`/`ten`, at no extra cost), this is now a
 plain read of the precomputed `state.u`/`state.pts`/`state.bnd_norm` fields —
-no matrix is assembled and no solve happens here.
+no matrix is assembled and no solve happens here. Weighted-corner states
+instead store physical `q=∂ₙψ` in `vec`; if `u` is absent, this function
+returns `vec/sqrt(_rellich(pts,vec,k))` on the same nodes.
 
 The `b`/`multithreaded` keywords are accepted only for interface
 compatibility with the generic `S<:AbsState` methods
@@ -346,74 +348,6 @@ function momentum_function(u::AbstractVector{U}, s::AbstractVector{T}, ds::Abstr
         lastdouble >= 2 && (power[2:lastdouble] .*= 2)
     end
     return power, ks
-end
-
-"""
-    _weighted_corner_boundary_quadrature(pts::BoundaryPoints{T},
-        q::AbstractVector{<:Number}) -> Tuple{Vector{T},Vector{Complex{T}}}
-
-Sample the physical source measure `q ds` through its weighted panel cardinals.
-`pts` owns the original curve charts; `q` contains full-boundary physical nodal
-normal derivatives. Return source arc lengths and integrated complex source
-amplitudes. Summing `amplitudes .* f.(s)` approximates `∫q(s)f(s)ds` for a smooth
-boundary test function. Gaussian source weights already enter the amplitudes;
-they must not be multiplied by the separate Jacobi `|q|²` norm weights.
-No keywords are required. Inputs are unchanged and returned vectors are owned.
-"""
-function _weighted_corner_boundary_quadrature(pts::BoundaryPoints{T},q::AbstractVector{<:Number}) where {T<:Real}
-    length(q) == length(pts) || throw(DimensionMismatch("boundary projection needs a full physical density"))
-    space = pts.density_space::WeightedDensitySpace{T}
-    _weighted_corner_source_plan(pts,Int[])
-    rules = lock(space.source_lock) do
-        [only(space.source_cache[(0,p,panel.source_order)]) for (p,panel) in enumerate(space.panels)]
-    end
-    offsets = cumsum(vcat(zero(T),T[curve.length for curve in space.curves]))
-    samples = T[]; amplitudes = Complex{T}[]
-    for (panel,rule) in zip(space.panels,rules)
-        append!(amplitudes,rule.basis * @view(q[panel.indices]))
-        curve = space.curves[panel.curve_index]
-        for t in rule.parameters
-            ξ = panel.reverse ? one(T)-t : t
-            native = panel.reverse ? panel.right-(panel.right-panel.left)*ξ^panel.power : panel.left+(panel.right-panel.left)*ξ^panel.power
-            push!(samples,offsets[panel.curve_index]+T(BilliardGeometry.arc_length(curve,native)))
-        end
-    end
-    return samples, amplitudes
-end
-
-
-"""
-    momentum_function(u::AbstractVector{<:Number}, pts::BoundaryPoints{T})
-        -> Tuple{Vector{T},Vector{T}}
-
-Project a physical boundary derivative onto `exp(-2πim*s/L)`, with
-`m=0:floor(length(u)/2)`. `u` contains full-boundary nodal values and `pts`
-contains their geometry. Periodic/graded points use their physical quadrature;
-weighted corner points integrate the complete source cardinals through
-independent Gaussian samples. This distinction is essential because the
-Jacobi norm weights integrate `|u|²`, rather than the linear density.
-
-No keywords are required. Return squared Fourier coefficients and their
-angular wavenumbers. Inputs are unchanged; vectors are newly allocated.
-"""
-function momentum_function(u::AbstractVector{<:Number},pts::BoundaryPoints{T}) where {T<:Real}
-    pts.density_space === nothing && return momentum_function(u,pts.s,pts.ds)
-    samples, amplitudes = _weighted_corner_boundary_quadrature(pts,u)
-    L = T(sum(curve.length for curve in pts.density_space.curves))
-    frequencies = T.(2pi/L .* (0:div(length(u),2)))
-    power = Vector{T}(undef,length(frequencies))
-    @inbounds for m in eachindex(frequencies)
-        coefficient = zero(Complex{T})
-        for j in eachindex(samples)
-            coefficient += amplitudes[j]*cis(-frequencies[m]*samples[j])
-        end
-        power[m] = abs2(coefficient/L)
-    end
-    if eltype(u) <: Real
-        lastdouble = iseven(length(u)) ? length(power)-1 : length(power)
-        lastdouble >= 2 && (power[2:lastdouble] .*= 2)
-    end
-    return power, frequencies
 end
 
 """
