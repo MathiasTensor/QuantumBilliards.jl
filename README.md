@@ -6,6 +6,8 @@ A Julia library for computing eigenvalues, eigenfunctions and Husimi functions o
 **See examples folder for most common and practical uses of this library!**
 **Manual (and paper) coming soon!!!**
 
+This is just a fun dev version, has some advanced stuff currently unpublished, some wrong stuff that I did not have time to fix (looking at you symmetries w/ Kress quad. scheme for non cheb route and hyperbol. symm.), and some incomplete stuff from a local ver. that I did not yet upload (new magnetic stuff as in the lib paper) so use at your own peril! Rather, use the one in  Quantum-Chaos-Julia, which is a more nicely designed port of this one with added stuff. Cheers, Matic!
+
 ## Overview
 
 Targets high-frequency spectral computations on smooth and piecewise-smooth domains. It combines:
