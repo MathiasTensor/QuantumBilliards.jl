@@ -3,176 +3,48 @@
 A Julia library for computing eigenvalues, eigenfunctions and Husimi functions of 2D quantum billiards using boundary integral and basis-expansion methods.
 
 **For now use Julia 1.19 due to CairoMakie issue**
-**See examples folder for most common and practical uses of this library!**
-**Manual (and paper) coming soon!!!**
+**See examples folder for most common and practical uses of this library**
+**See Quantum-Chaos-Julia/QuantumBilliards.jl for the paper**
 
-This is just a fun dev version, has some advanced stuff currently unpublished, some wrong stuff that I did not have time to fix (looking at you symmetries w/ Kress quad. scheme for non cheb route and hyperbol. symm.), and some incomplete stuff from a local ver. that I did not yet upload (new magnetic stuff as in the lib paper) so use at your own peril! Rather, use the one in  Quantum-Chaos-Julia, which is a more nicely designed port of this one with added stuff. Cheers, Matic!
+This is just a fun dev version, has some advanced stuff currently unpublished (and unpushed to remote), some wrong stuff that I did not have time to fix yet (looking at you symmetries w/ Kress quad. scheme for non cheb route and hyperbol. symm., but next on the lists). Currently use at your own peril (if using the mentioned probs - still gives some result, just not accurate as symms for Kress dont work in the old naive way people used it - I fixed it in QB.jl). Rather, use the one in Quantum-Chaos-Julia/QuantumBilliards.jl, which is a more nicely designed port of this one with added stuff.
+
+EDIT 4/11/26 Will add the OG Taylor recurrences for Beyn since it was made molded to work with Črt's BilliardGeometry.jl (but for dev-ing best to keep deps to minimum). This approach really cheap and maybe in future a good cheap way to make a poly of det(A(t)) will be implemented to extend L. Zhao and A. Barnett's approach via Nystrom discr. of A and det poly with Boyd root finding.
+
+EDIT 4/11/26 Will add the OG CORK code when I have the time (Quantum-Chaos-Julia/QuantumBilliards.jl has the ver that works with Črt's BilliardGeometry.jl, but for dev-ing it is better to have the least deps as possible here). Fun fact: the OG reason why CORK was implemented is because of my problems with the Landau level remaining garbage after regularization by the Gamma reflection identity in Hornberger & Smilansky. Because CORK works on matrix poly we can divide out the poly coeffs corresponding to directions that are numerically vanishing (the garbage as hinted in the paper) so only physical sols remain (kind of hate this approach as it requires some QR-ing with cutoffs). Works but prefer Beyn with the V matrix with interior G evals to remove the garbage for magnetic case.
+
+EDIT 4/11/26 For the Backer Y0 approach (described below) it is probably best to add the J0 (ala gauge field methods (GFM) (check {Cohen,Lepore,Heller} paper) with some real coupling to push the spurious roots further away from real ones for stability (prel. testing). Also to prevent large number of residual testing a probe matrix similar to the magnetic one described in our QB.jl paper is to be used - check spurious rejection trick!
+
+Happy coding and cheers,
+Matic
 
 ## Overview
 
-Targets high-frequency spectral computations on smooth and piecewise-smooth domains. It combines:
-
-- Boundary Integral Methods (DLP / CFIE / Alpert)
+- Boundary Integral Methods
     1. Boundary Integral Equations in time-harmonic acoustic scattering, Kress R., 1991
     2. (Habilitationsschrift) Eigenfunctions in chaotic quantum systems, Backer A., 2007
-    3. HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999
-- Local accelerated solvers (EBIM, Vergini–Saraceno)
+    3. HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999 (LEGACY for Euclidian BIM)
+    4. Gauss-Legendre log. product quad. - for those pesky geoms like stadium - C1 joins but no corners to naively grade
+- Local accelerated solvers 
     1. Calculation by scaling of highly excited states of billiards, Vergini E., Saraceno M. 1995 https://pubmed.ncbi.nlm.nih.gov/9963660/
     2. (PhD thesis) https://users.flatironinstitute.org/~ahb/thesis_html/node71.html, Barnett A.
     3. Expanded boundary integral method and chaotic time-reversal doublets in quantum billiards, Veble et. al., 2006 https://arxiv.org/abs/nlin/0612011
-- Contour methods (Beyn)
+- Contour methods (Beyn, TODO Cork)
     1. An integral method for solving nonlinear eigenvalue problems, Wolf-Jürgen Beyn, 2010 https://arxiv.org/abs/1003.1580
-- Chebyshev-accelerated kernel assembly
+- Chebyshev-accelerated kernel assembly (LEGACY)
     1. Greengard's hank106.f code - idea for panelization implementation
-- Dielectric cavities (hyperbolic metric under development)
+- Dielectric cavities (done with some optimizations inplace, check examples folder. Rect. contour is king because side reuse and the binary search for svd cutoff drop is also king it seems (since no cheap im part trikc here like in interior resonances in tipical QBs))
 
 Focus is on the balance between **performance** and **spectral resolution**, with a high-level API and low-level optimizations.
 
 ## Citing
 
-If you use `QuantumBilliards.jl` in your research, please cite it as:
-
-```bibtex
-@software{Orel_Lozej_QuantumBilliards_jl,
-  author = {Orel, Matic and Lozej, Črt},
-  title = {{QuantumBilliards.jl}: High-frequency spectral computations for two-dimensional quantum billiards},
-  url = {https://github.com/Quantum-Chaos-Julia/QuantumBilliards.jl},
-  version = {0.1.0},
-  year = {2026}
-}
-```
+If you use `QuantumBilliards.jl` in your research, please cite the ver Quantum-Chaos-Julia/QuantumBilliards.jl
 
 ---
 
 ## Methods
 
-### Boundary Integral Methods (DLP / CFIE) and Basis Type sweeps
-
-The Helmholtz problem
-
-(Δ + k²) ψ = 0      in Ω
-
-is reduced to
-
-A(k) σ = 0
-
-CFIE variants use both the single and double layer superposition formulation for dealing with highly convex geometries and presence of holes.
-
-**+** Accurate (with refine_minina) and stable (easier to check correctness)
-**−** Dense matrices, expensive assembly and solve for each trial wavenumber
-
-Examples
-- example_circle_eigval_convergence.jl
-- example_bim_ebim_psm_dm.jl
-
----
-
-### EBIM (Expanded Boundary Integral Method)
-
-Local expansion:
-
-A(k + ε) ≈ A + ε A’ + (1/2) ε² A’’
-
-Solve
-
-A v = λ A’ v
-
-with second-order corrections.
-
-**+** Efficient for medium scale spectrum computations, works with Krylov for GEVP 
-**−** Finicky to deal with as it requires checking interval size to not lose eigenvalues 
-**+/-** Accuracy determined by both quadrature and window width, so the computational difficulty of the problem can be drastially reduced if one needs only <1% of mean level spacing of the unfolded spectrum.
-
-Examples
-- example_bim_ebim_psm_dm.jl
-
----
-
-### Vergini–Saraceno (Scaling Method)
-
-Basis expansion near k_0:
-
-F c = μ G c
-
-**+** Extremely fast, gets many nearby levels per solve
-**−** Basis-dependent, less robust for complex (non-convex) geometries as convergence is not guaranteed -> needs low k check with PSM/DM sweep to see if basis approach converged.
-**+/-** Accuracy determined by both quadrature and window width, so the computational difficulty of the problem can be drastially reduced if one needs only <1% of mean level spacing of the unfolded spectrum.
-
-Examples:
-- example_dlp_kress_vergini_saraceno.jl
-- example_spectrum.jl
-- example_ellipse_cap_mushroom.jl
-
----
-
-### Beyn Method
-
-Contour-based extraction:
-
-A_p = (1 / 2πi) ∮ z^p T(z)^{-1} V dz
-
-where we construct A_0 and A_1
-
-**+** Finds all eigenvalues in a locally large region (disk of size R=0.5 spanning many smaller EBIM/VS windows)
-**+** Very effective when Vergini–Saraceno fails or when high--accuracy is needed (for high accuracy studies this is the defacto solver!)
-**+** Naturally supports desymmetrized domains via subspace projections (Kress/Alpert) or even desymmerized kernels with DLP kress solvers
-**−** Slightly slower (not by much) than Vergini–Saraceno for CFIE Kress / Alpert as it always needs to form and invert the full size matrix regardles of subspace projection
-
-Examples:
-- example_beyn_kress.jl
-- example_beyn_alpert.jl
-- example_circle_with_hole.jl
-- example_kress_teardrop.jl
-
----
-
-### Chebyshev Interpolation
-
-Kernel approximation:
-
-f(x) ≈ Σ a_n T_n(x)
-
-**+** Faster repeated assembly, prioriziting smaller panels with lower degrees
-**+** Separate stragegies for J and H type of Bessel functions (J requires very low number of panels and low cheb poly degree)
-**+** Accuracy is given as a kwarg so that we dont overpanelize when many digits not needed
-**−** Slightly higher RAM usage due to panelization - but paid once upfront due to the architecture of Accelerated solvers segmenting the entire spectrum into intervals where the same geometry can be safely reused for many matrix evaluations.
-
----
-
-## Geometry
-
-Supports many billiards:
-- circle, ellipse, stadium, mushroom, Robnik, star, multi-hole domains
-- symmetry-reduced and composite geometries
-
----
-
-## Practical Guidance
-
-- **Many levels in a small window and large-scale computation →** Vergini–Saraceno  
-- **Smaller number of eigenvalues →** EBIM (Krylov for large systems)  
-- **Large-scale / difficult spectra →** Beyn  
-- **Assembly dominates →** Chebyshev interpolation  
-
-In practice:
-- VS is fastest when it applies - but window size determines accuracy!
-- Beyn is the most robust fallback and works on desymmetrized domains for all BIE type solvers.
-- EBIM is best for systematic checking in medium sized intervals.
-
----
-
-## Symmetries
-
-Symmetry reduction reduces problem size and improves performance, but:
-
-- the spectrum splits into symmetry sectors -> removing degeneracies.
-- level counting must match the reduced domain -> only get parts of the full spectrum for that irrep.
-
-Some solvers (e.g. CFIE Kress, Alpert) assume periodic parametrizations and do not directly support desymmetrization. Beyn provides a natural workaround in these cases, but still requires full matrix assembly and inversion (lu!).
-
-**Use symmetry whenever possible for improved performance and removal of degeneracies**
-
----
+Easier to just check examples and let AI generate the scripts that call the API, if just a shorter doc then pointless to write...
 
 ## Typical Workflow
 
@@ -197,18 +69,14 @@ Active development focused on:
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
 - Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
-- QBX,QB2X
+- QBX,QB2X (just maybe for near evals of weird kernels and wavefuncs near bdry, ubiqutous one is also interesting, but chunkie will prob have the better implementation)
     1. Quadrature by Expansion: A New Method for the Evaluation of Layer Potentials, Kl¨ockner A., Barnett A., Greendard L., O'Neil M. (https://arxiv.org/pdf/1207.4461)
     2. Quadrature by Two Expansions for Evaluating Helmholtz Layer Potentials, Weed J., Ding. L,... (https://arxiv.org/pdf/2207.13762)
 - OTOC, wavepacket dynamics...
 
 ## Critical
 
-1. Need to find a better global grading for Kress & Alpert that can handle both joins with and wihtout corners. Currently we have a global grading that works but the accuracy could be improved with a more specialized grading.
-
-2. Poincar\'e - Husimi functions for cornered domains with Kress (and potentially Alpert). Currently implementations exist for only non corner CFIE/DLP solvers with and without holes. Corners give large jumps to the boudnary function that completely skews the PH function, need to regularize it somehow...
-
-3. Fix Evanescent Plane Waves, as currently the CompositeBasis does not work.
+Fix Evanescent Plane Waves, as currently the CompositeBasis does not work (if complex num. ver. of it will break real symm Eigen though for VS, bummer).
 
 ## Some pics...
 
