@@ -20,17 +20,20 @@ Assemble using weighted Gaussian/logarithmic product integration (modified), sin
 For $N$ GL nodes, let $\ell_j(t)=\prod_{k\ne j}(t-t_k)/(t_j-t_k)=\sum_{m=0}^{N-1}c_{jm}t^m$ and $\gamma=p\lambda-1$. Then
 
 $$
-\begin{aligned}
 \int_0^1 t^\gamma\ell_j(t)\,dt
-&=\sum_{m=0}^{N-1}\frac{c_{jm}}{m+\gamma+1},\\
+=\sum_{m=0}^{N-1}\frac{c_{jm}}{m+\gamma+1}.
+$$
+
+$$
 \int_0^1 t^\gamma\ell_j(t)\log|t_i^p-t^p|\,dt
-&=\frac1p\sum_{m=0}^{N-1}c_{jm}
-\Lambda_{\frac{m+\gamma+1}{p}}(t_i^p),\\
+=\frac{1}{p}\sum_{m=0}^{N-1}c_{jm}\Lambda_{\frac{m+\gamma+1}{p}}(t_i^p).
+$$
+
+$$
 \Lambda_a(x)
-&=\frac{\log(1-x)}a+
-\frac{\operatorname{Re}\!\left[{}_2F_1(1,a;a+1;x^{-1}+i0)\right]-1}{a^2},
+=\frac{\log(1-x)}{a}
++\frac{\Re\left[{}_2F_1(1,a;a+1;x^{-1}+i0)\right]-1}{a^2},
 \qquad a>0,\quad 0<x<1.
-\end{aligned}
 $$
 
 Happy coding and cheers,
