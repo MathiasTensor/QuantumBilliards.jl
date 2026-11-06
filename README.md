@@ -14,6 +14,25 @@ EDIT 4/11/26 Will add the OG CORK code when I have the time (Quantum-Chaos-Julia
 
 EDIT 4/11/26 For the Backer Y0 approach (described below) it is probably best to add the J0 (ala gauge field methods (GFM) (check {Cohen,Lepore,Heller} paper) with some real coupling to push the spurious roots further away from real ones for stability (prel. testing). Also to prevent large number of residual testing a probe matrix similar to the magnetic one described in our QB.jl paper is to be used - check spurious rejection trick!
 
+TODO: Corner-adapted Nyström: $\lambda=\pi/\alpha$, $r=Lt^p$, with $p\lambda\in\mathbb{N}$ (typically $p=2/\lambda$ at reentrant corners), $L$ panel size.
+Interpolate $v(t)=t^{p(1-\lambda)}q(Lt^p)$, giving $q\,dr=pL\,t^{p\lambda-1}v(t)\,dt$.
+Assemble using weighted Gaussian/logarithmic product integration (modified), since they are known in sort-of closed form.
+For $N$ GL nodes, let $\ell_j(t)=\prod_{k\ne j}(t-t_k)/(t_j-t_k)=\sum_{m=0}^{N-1}c_{jm}t^m$ and $\gamma=p\lambda-1$. Then
+
+$$
+\begin{aligned}
+\int_0^1 t^\gamma\ell_j(t)\,dt
+&=\sum_{m=0}^{N-1}\frac{c_{jm}}{m+\gamma+1},\\
+\int_0^1 t^\gamma\ell_j(t)\log|t_i^p-t^p|\,dt
+&=\frac1p\sum_{m=0}^{N-1}c_{jm}
+\Lambda_{\frac{m+\gamma+1}{p}}(t_i^p),\\
+\Lambda_a(x)
+&=\frac{\log(1-x)}a+
+\frac{\operatorname{Re}\!\left[{}_2F_1(1,a;a+1;x^{-1}+i0)\right]-1}{a^2},
+\qquad a>0,\quad 0<x<1.
+\end{aligned}
+$$
+
 Happy coding and cheers,
 Matic
 
